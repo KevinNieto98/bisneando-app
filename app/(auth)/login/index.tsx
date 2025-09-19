@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
 import { useState } from "react";
 import {
@@ -10,23 +11,37 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+    const insets = useSafeAreaInsets(); // 👈
 
   const handleSubmit = () => {
-    router.replace("/(tabs)");
+    router.replace("/(tabs)/home");
   };
 
   return (
     <View style={styles.screen}>
-      <KeyboardAvoidingView
+       <KeyboardAvoidingView
         behavior={Platform.select({ ios: "padding", android: undefined })}
         style={{ flex: 1 }}
       >
         <SafeAreaView style={styles.safe}>
+          <TouchableOpacity
+            onPress={() => router.replace("/(tabs)/home")}
+            style={{
+              position: "absolute",
+              top: insets.top + 8,    // 👈 debajo del notch
+              left: 16,
+              zIndex: 10,
+              padding: 8,             // mejor área táctil
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="arrow-back" size={28} color="#374151" />
+          </TouchableOpacity>
           <View style={styles.center}>
             <Image
               source={require("@/assets/images/bisneando.png")}
