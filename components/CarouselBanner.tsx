@@ -1,27 +1,49 @@
-import React, { useState } from "react";
-import { Dimensions, Image, StyleSheet, View } from "react-native";
-import { SwiperFlatList } from "react-native-swiper-flatlist";
+import { fetchActivePortadas } from "@/services/api"
+import React, { useEffect, useState } from "react"
+import { Dimensions, Image, StyleSheet, View } from "react-native"
+import { SwiperFlatList } from "react-native-swiper-flatlist"
+import { PortadaSkeleton } from "./PortadaSkeleton"
 
-const { width } = Dimensions.get("window");
+const { width } = Dimensions.get("window")
 
 const HEIGHT = (() => {
-  if (width >= 1024) return 400; // lg
-  if (width >= 768) return 300;  // md
-  return 180;                    // base
-})();
-
-const images = [
-  { src: require("../assets/images/portadas/1.png"), title: "Banner 1" },
-  { src: require("../assets/images/portadas/2.png"), title: "Banner 2" },
-  { src: require("../assets/images/portadas/3.png"), title: "Banner 3" },
-];
+  if (width >= 1024) return 400 // lg
+  if (width >= 768) return 300  // md
+  return 180                    // base
+})()
 
 export const CarouselBanner = () => {
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(0)
+  const [portadas, setPortadas] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchActivePortadas().then((data) => {
+
+      setPortadas(data)
+      
+      setLoading(false)
+    })
+  }, [])
+
+  if (loading) {
+    return (
+      <View style={[styles.carouselWrapper, { height: HEIGHT, justifyContent: "center", alignItems: "center" }]}>
+        <PortadaSkeleton />
+      </View>
+    )
+  }
+
+  if (portadas.length === 0) {
+    return (
+      <View style={[styles.carouselWrapper, { height: HEIGHT, justifyContent: "center", alignItems: "center" }]}>
+        <PortadaSkeleton />
+      </View>
+    )
+  }
 
   return (
     <View style={styles.container}>
-      {/* Carrusel con esquinas redondeadas */}
       <View style={[styles.carouselWrapper, { height: HEIGHT }]}>
         <SwiperFlatList
           autoplay
@@ -29,36 +51,35 @@ export const CarouselBanner = () => {
           autoplayLoop
           autoplayLoopKeepAnimation
           index={0}
-          data={images}
+          data={portadas}
           onChangeIndex={({ index: i }) => setIndex(i)}
           renderItem={({ item }) => (
             <View style={[styles.slide, { height: HEIGHT }]}>
               <Image
-                source={item.src}
-                accessibilityLabel={item.title}
+                source={{ uri: item.url_imagen }}
+                accessibilityLabel={`Portada ${item.id_portada}`}
                 style={styles.image}
-                resizeMode="cover" // 👈 usa cover para llenar y respetar borderRadius
+                resizeMode="cover"
               />
             </View>
           )}
-          keyExtractor={(_, i) => `banner-${i}`}
+          keyExtractor={(item) => `banner-${item.id_portada}`}
         />
       </View>
     </View>
-  );
-};
+  )
+}
 
 const styles = StyleSheet.create({
   container: {
     width: "99%",
-
   },
   carouselWrapper: {
     width: "100%",
     maxWidth: 1150,
     alignSelf: "center",
-    borderRadius: 12,     // 👈 redondeo
-    overflow: "hidden",   // 👈 obliga a las imágenes a respetar bordes
+    borderRadius: 12,
+    overflow: "hidden",
     backgroundColor: "white",
   },
   slide: {
@@ -70,4 +91,4 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-});
+})

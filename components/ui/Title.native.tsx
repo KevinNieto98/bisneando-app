@@ -38,7 +38,8 @@ const Title: React.FC<Props> = ({
 };
 
 const styles = StyleSheet.create({
-  root: { marginTop: 16, backgroundColor: "transparent" },
+  root: { marginTop: 12, 
+     marginBottom: 12,backgroundColor: "transparent" },
   row: { flexDirection: "row", alignItems: "center" },
   iconContainer: {
     height: 40, width: 40, borderRadius: 12,
