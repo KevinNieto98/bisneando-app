@@ -8,19 +8,27 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#facc15", // amarillo bonito ✨
-        tabBarInactiveTintColor: "#6b7280", // grisecito para los inactivos
+        tabBarShowLabel: false, // 👈 oculta los títulos
+        tabBarActiveTintColor: "#DAA520", // amarillo vivo
+        tabBarInactiveTintColor: "#6b7280", // grisecito
         tabBarHideOnKeyboard: Platform.OS === "android",
+        tabBarStyle: {
+          height: 60,          // 👈 más bajita (ajústalo a tu gusto)
+          paddingBottom: 8,    // centra los íconos verticalmente
+          paddingTop: 8,
+        },
+        tabBarIconStyle: {
+          marginBottom: 0,     // elimina espacio extra reservado al texto
+        },
       }}
     >
       <Tabs.Screen
         name="home/index"
         options={{
-          title: "Inicio",
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "home" : "home-outline"}
-              size={size}
+              size={focused ? size + 4 : size}
               color={color}
             />
           ),
@@ -29,11 +37,10 @@ export default function TabLayout() {
       <Tabs.Screen
         name="explore/index"
         options={{
-          title: "Explorar",
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
-              name={focused ? "compass" : "compass-outline"}
-              size={size}
+              name={focused ? "grid" : "grid-outline"} 
+              size={focused ? size + 4 : size}
               color={color}
             />
           ),
@@ -42,11 +49,10 @@ export default function TabLayout() {
       <Tabs.Screen
         name="cart/index"
         options={{
-          title: "Carrito",
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "cart" : "cart-outline"}
-              size={size}
+              size={focused ? size + 4 : size}
               color={color}
             />
           ),
@@ -55,11 +61,10 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile/index"
         options={{
-          title: "Perfil",
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "person" : "person-outline"}
-              size={size}
+              size={focused ? size + 4 : size}
               color={color}
             />
           ),

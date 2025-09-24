@@ -6,7 +6,8 @@ import Icono from "@/components/ui/Icon.native"
 import Title from "@/components/ui/Title.native"
 import { fetchCategorias, fetchProductosDestacados } from "@/services/api"
 import React, { useEffect, useState } from "react"
-import { ActivityIndicator, SafeAreaView, StyleSheet, View } from "react-native"
+import { ActivityIndicator, Platform, StatusBar, StyleSheet, View } from "react-native"
+import { SafeAreaView } from "react-native-safe-area-context"
 
 export default function HomeScreen() {
   const [categories, setCategories] = useState<any[]>([])
@@ -39,14 +40,14 @@ export default function HomeScreen() {
         brand: prod.id_marca ? `Marca ${prod.id_marca}` : undefined, // opcional
       }))
       setProducts(mapped)
-      console.log(products);
       
       setLoadingProducts(false)
     })
   }, [])
 
   return (
-    <SafeAreaView style={styles.container}>
+   <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+    <View style={[styles.container, Platform.OS === "android" && { marginTop: StatusBar.currentHeight }]}>
       <View style={{ marginBottom: 24, paddingHorizontal: 16 }}>
         <CarouselBanner />
 
@@ -66,6 +67,7 @@ export default function HomeScreen() {
           <ProductSimilares products={products} />
         )}
       </View>
+        </View>
     </SafeAreaView>
   )
 }
