@@ -1,13 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo } from "react";
-import {
-  Dimensions,
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 export interface Product {
   slug: string;
@@ -22,12 +15,7 @@ interface Props {
   onAddToCart?: (product: Product) => void;
 }
 
-const { width } = Dimensions.get("window");
-// 📐 Ajuste: 3 columnas con 4px de separación entre ellas y 16px de padding lateral
-const CARD_MARGIN = 8;
-const CARD_WIDTH = (width - CARD_MARGIN * 2 * 3 - 32) / 3;
-
-export const ProductGridItem: React.FC<Props> = ({ product, onAddToCart }) => {
+export const ProductSlideItem: React.FC<Props> = ({ product, onAddToCart }) => {
   const imageUri =
     product.images?.[0] ||
     "https://via.placeholder.com/300x200.png?text=Sin+Imagen";
@@ -44,7 +32,14 @@ export const ProductGridItem: React.FC<Props> = ({ product, onAddToCart }) => {
 
   return (
     <View style={styles.card}>
-      <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
+      {/* Imagen */}
+      <Image
+        source={{ uri: imageUri }}
+        style={styles.image}
+        resizeMode="cover"
+      />
+
+      {/* Info producto */}
       <View style={styles.info}>
         <View style={styles.textWrapper}>
           {product.brand && (
@@ -54,9 +49,11 @@ export const ProductGridItem: React.FC<Props> = ({ product, onAddToCart }) => {
           )}
           <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
             {product.title}
-          </Text>
+          </Text> 
           <Text style={styles.price}>{priceFormatted}</Text>
         </View>
+
+        {/* Botón agregar al carrito */}
         <Pressable
           style={({ pressed }) => [
             styles.cartButton,
@@ -64,9 +61,11 @@ export const ProductGridItem: React.FC<Props> = ({ product, onAddToCart }) => {
           ]}
           onPress={() => onAddToCart?.(product)}
         >
-          <Ionicons name="cart-outline" size={12} color="white" />
-          <Text style={styles.cartText}>+</Text>
+          <Ionicons name="cart-outline" size={18} color="white" />
+          <Text style={styles.cartText}>Agregar</Text>
         </Pressable>
+
+        {/* 👇 padding fijo para que todas tengan misma altura */}
         <View style={styles.bottomSpacer} />
       </View>
     </View>
@@ -76,64 +75,67 @@ export const ProductGridItem: React.FC<Props> = ({ product, onAddToCart }) => {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "white",
-    borderRadius: 8,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "#e5e7eb",
     overflow: "hidden",
-    width: CARD_WIDTH,
-    height: 180,
-    margin: CARD_MARGIN,
+    width: 200,
+    height: 280, // ✅ altura fija
+    marginHorizontal: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
   },
   image: {
     width: "100%",
-    height: 80,
+    height: 150,
   },
   info: {
     flex: 1,
     justifyContent: "space-between",
-    padding: 6,
+    padding: 12,
   },
   textWrapper: {
     flexShrink: 1,
   },
   brand: {
-    fontSize: 8,
-    fontWeight: "600",
-    color: "#71717a",
-    textTransform: "uppercase",
-    marginBottom: 1,
-  },
-  title: {
-    fontSize: 10,
-    fontWeight: "500",
-    color: "#3f3f46",
-    minHeight: 24,
-    lineHeight: 12,
-    marginBottom: 2,
-  },
-  price: {
     fontSize: 11,
     fontWeight: "700",
+    color: "#71717a",
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+title: {
+  fontSize: 14,
+  fontWeight: "500",
+  color: "#3f3f46",
+  minHeight: 36, // ✅ asegura espacio para hasta 2 líneas
+  lineHeight: 18, // ✅ controla el alto de cada línea
+},
+  price: {
+    fontSize: 15,
+    fontWeight: "700",
     color: "#18181b",
-    marginBottom: 4,
+      marginBottom: 10, 
   },
   cartButton: {
-    marginTop: 4,
+    marginTop: 8,
     backgroundColor: "#2563eb",
-    borderRadius: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
+    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 2,
+    gap: 6,
   },
   cartText: {
     color: "white",
-    fontSize: 9,
+    fontSize: 13,
     fontWeight: "600",
   },
   bottomSpacer: {
-    height: 1,
+    height: 1, // ✅ asegura un pequeño padding al final
   },
 });

@@ -9,7 +9,8 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { ProductGridItem } from "./ProductGridItem"; // <- tu versión RN
+// <- tu versión RN
+import { ProductSlideItem } from "./ProductSlideItem";
 import Icono from "./ui/Icon.native";
 
 export interface Product {
@@ -166,7 +167,7 @@ export const ProductSimilares: React.FC<Props> = ({
             key={`${product.slug}-${index}`}
             style={{ width: itemWidth }}
           >
-            <ProductGridItem product={product} />
+            <ProductSlideItem product={product} />
           </View>
         ))}
       </ScrollView>

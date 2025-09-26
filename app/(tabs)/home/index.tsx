@@ -1,75 +1,46 @@
-import { CarouselBanner } from "@/components/CarouselBanner"
-import CategorySkeleton from "@/components/CategorySkeleton"
-import CategorySection from "@/components/CategoySection"
-import { ProductSimilares } from "@/components/ProductSimilares"
-import Icono from "@/components/ui/Icon.native"
-import Title from "@/components/ui/Title.native"
-import { fetchCategorias, fetchProductosDestacados } from "@/services/api"
-import React, { useEffect, useState } from "react"
-import { ActivityIndicator, Platform, StatusBar, StyleSheet, View } from "react-native"
-import { SafeAreaView } from "react-native-safe-area-context"
+import { CarouselBanner } from "@/components/CarouselBanner";
+import CategorySkeleton from "@/components/CategorySkeleton";
+import CategorySection from "@/components/CategoySection";
+import { ProductSimilares } from "@/components/ProductSimilares";
+import Icono from "@/components/ui/Icon.native";
+import Title from "@/components/ui/Title.native";
+import { useAppStore } from "@/store/useAppStore";
+import React, { useEffect } from "react";
+import { ActivityIndicator, Platform, StatusBar, StyleSheet, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
-  const [categories, setCategories] = useState<any[]>([])
-  const [loadingCategories, setLoadingCategories] = useState(true)
+  const {
+    categories,
+    loadingCategories,
+    products,
+    loadingProducts,
+    loadCategories,
+    loadProducts,
+  } = useAppStore();
 
-  const [products, setProducts] = useState<any[]>([])
-  const [loadingProducts, setLoadingProducts] = useState(true)
-
-  // 🚀 Cargar categorías
   useEffect(() => {
-    fetchCategorias().then((data) => {
-      const mapped = data.map((cat: any) => ({
-        title: cat.nombre_categoria,
-        icon: cat.icono || "Tag",
-        slug: `cat-${cat.id_categoria}`,
-      }))
-      setCategories(mapped)
-      setLoadingCategories(false)
-    })
-  }, [])
-
-  // 🚀 Cargar productos destacados
-  useEffect(() => {
-    fetchProductosDestacados().then((data) => {
-      const mapped = data.map((prod: any) => ({
-        slug: prod.slug,
-        title: prod.nombre_producto,
-        price: prod.precio,
-        images: prod.imagenes.map((img: any) => img.url_imagen),
-        brand: prod.id_marca ? `Marca ${prod.id_marca}` : undefined, // opcional
-      }))
-      setProducts(mapped)
-      
-      setLoadingProducts(false)
-    })
-  }, [])
+    loadCategories();
+    loadProducts();
+  }, []);
 
   return (
-   <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-    <View style={[styles.container, Platform.OS === "android" && { marginTop: StatusBar.currentHeight }]}>
-      <View style={{ marginBottom: 24, paddingHorizontal: 16 }}>
-        <CarouselBanner />
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      <View style={[styles.container, Platform.OS === "android" && { marginTop: StatusBar.currentHeight }]}>
+        <View style={{ marginBottom: 24, paddingHorizontal: 16 }}>
+          <CarouselBanner />
 
-        {/* Categorías */}
-        <Title icon={<Icono name="Tags" size={20} color="#52525b" />} title="Categorías" />
-        {loadingCategories ? (
-          <CategorySkeleton />
-        ) : (
-          <CategorySection categories={categories} />
-        )}
+          {/* Categorías */}
+          <Title icon={<Icono name="Tags" size={20} color="#52525b" />} title="Categorías" />
+          {loadingCategories ? <CategorySkeleton /> : <CategorySection categories={categories} />}
 
-        {/* Productos Destacados */}
-        <Title icon={<Icono name="Star" size={20} color="#52525b" />} title="Productos Destacados" />
-        {loadingProducts ? (
-          <ActivityIndicator size="large" color="#000" />
-        ) : (
-          <ProductSimilares products={products} />
-        )}
-      </View>
+          {/* Productos Destacados */}
+          <Title icon={<Icono name="Star" size={20} color="#52525b" />} title="Productos Destacados" />
+          {loadingProducts ? <ActivityIndicator size="large" color="#000" /> : <ProductSimilares products={products} />}
         </View>
+      </View>
     </SafeAreaView>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
@@ -77,10 +48,4 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "white",
   },
-  roundedWrap: {
-    marginHorizontal: 10,
-    borderRadius: 45,
-    overflow: "hidden",
-    backgroundColor: "white",
-  },
-})
+});

@@ -1,13 +1,8 @@
+import { Category } from "@/store/useAppStore"; // 👈 usa el mismo tipo del store
 import { useRouter } from "expo-router";
 import React from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import Icono from "./ui/Icon.native";
-
-type Category = {
-  title: string;
-  icon: string;
-  slug: string;
-};
 
 type Props = {
   categories: Category[];
@@ -16,8 +11,6 @@ type Props = {
 // 🎨 Paleta de colores pastel
 const pastelColors = [
   "#FDE68A", // amarillo pastel
- // "#BFDBFE", // azul pastel
- // "#C7D2FE", // morado pastel
   "#BBF7D0", // verde pastel
   "#FBCFE8", // rosado pastel
   "#FECACA", // rojo suave
@@ -32,23 +25,26 @@ const CategorySection: React.FC<Props> = ({ categories }) => {
     <FlatList
       data={categories}
       numColumns={3}
-      keyExtractor={(item) => item.slug}
+      keyExtractor={(item) => item.id_categoria.toString()} // 👈 usamos id_categoria
       columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 12 }}
       renderItem={({ item, index }) => {
-        const bgColor = pastelColors[index % pastelColors.length]; // 🔄 asigna color automático
+        const bgColor = pastelColors[index % pastelColors.length];
 
         return (
           <Pressable
-            // onPress={() => router.push(`/category/${item.slug}`)}
+            // onPress={() => router.push(`/category/${item.id_categoria}`)} // 👈 navega por id_categoria si lo necesitas
             style={({ pressed }) => [
               styles.card,
-              { backgroundColor: bgColor, transform: [{ scale: pressed ? 0.96 : 1 }] },
+              {
+                backgroundColor: bgColor,
+                transform: [{ scale: pressed ? 0.96 : 1 }],
+              },
             ]}
           >
             <View style={styles.iconWrapper}>
-              <Icono name={item.icon} size={22} color="black" />
+              <Icono name={item.icono || "Tag"} size={22} color="black" />
             </View>
-            <Text style={styles.text}>{item.title}</Text>
+            <Text style={styles.text}>{item.nombre_categoria}</Text>
           </Pressable>
         );
       }}
