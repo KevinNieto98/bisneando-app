@@ -75,67 +75,67 @@ export const ProductSlideItem: React.FC<Props> = ({ product, onAddToCart }) => {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "white",
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "#e5e7eb",
     overflow: "hidden",
-    width: 200,
-    height: 280, // ✅ altura fija
-    marginHorizontal: 12,
+    width: 170, // antes 200
+    height: 240, // antes 280
+    marginHorizontal: 10, // antes 12
     shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
   },
   image: {
     width: "100%",
-    height: 150,
+    height: 120, // antes 150
   },
   info: {
     flex: 1,
     justifyContent: "space-between",
-    padding: 12,
+    padding: 10, // antes 12
   },
   textWrapper: {
     flexShrink: 1,
   },
   brand: {
-    fontSize: 11,
+    fontSize: 10, // antes 11
     fontWeight: "700",
     color: "#71717a",
     textTransform: "uppercase",
     marginBottom: 2,
   },
-title: {
-  fontSize: 14,
-  fontWeight: "500",
-  color: "#3f3f46",
-  minHeight: 36, // ✅ asegura espacio para hasta 2 líneas
-  lineHeight: 18, // ✅ controla el alto de cada línea
-},
+  title: {
+    fontSize: 13, // antes 14
+    fontWeight: "500",
+    color: "#3f3f46",
+    minHeight: 32, // antes 36
+    lineHeight: 17, // antes 18
+  },
   price: {
-    fontSize: 15,
+    fontSize: 14, // antes 15
     fontWeight: "700",
     color: "#18181b",
-      marginBottom: 10, 
+    marginBottom: 8, // antes 10
   },
   cartButton: {
-    marginTop: 8,
+    marginTop: 6, // antes 8
     backgroundColor: "#2563eb",
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    borderRadius: 10, // antes 12
+    paddingVertical: 5, // antes 6
+    paddingHorizontal: 8, // antes 10
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 5, // antes 6
   },
   cartText: {
     color: "white",
-    fontSize: 13,
+    fontSize: 12, // antes 13
     fontWeight: "600",
   },
   bottomSpacer: {
-    height: 1, // ✅ asegura un pequeño padding al final
+    height: 1,
   },
 });

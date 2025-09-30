@@ -6,7 +6,15 @@ import Icono from "@/components/ui/Icon.native";
 import Title from "@/components/ui/Title.native";
 import { useAppStore } from "@/store/useAppStore";
 import React, { useEffect } from "react";
-import { ActivityIndicator, Platform, StatusBar, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  Image,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
@@ -25,19 +33,60 @@ export default function HomeScreen() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <View style={[styles.container, Platform.OS === "android" && { marginTop: StatusBar.currentHeight }]}>
-        <View style={{ marginBottom: 24, paddingHorizontal: 16 }}>
-          <CarouselBanner />
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      {/* Notch amarillo */}
+      <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
 
-          {/* Categorías */}
-          <Title icon={<Icono name="Tags" size={20} color="#52525b" />} title="Categorías" />
-          {loadingCategories ? <CategorySkeleton /> : <CategorySection categories={categories} />}
+      {/* Header */}
+      <View style={styles.header}>
+        {/* Logo */}
+        <Image
+          source={require("@/assets/images/bisneando.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
 
-          {/* Productos Destacados */}
-          <Title icon={<Icono name="Star" size={20} color="#52525b" />} title="Productos Destacados" />
-          {loadingProducts ? <ActivityIndicator size="large" color="#000" /> : <ProductSimilares products={products} />}
-        </View>
+        {/* Botón notificación */}
+        <TouchableOpacity
+          style={styles.notificationButton}
+          onPress={() => console.log("Notificaciones")}
+        >
+          <Icono name="Bell" size={22} color="#27272a" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Contenido */}
+      <View
+        style={[
+          styles.content,
+          Platform.OS === "android" && { marginTop: StatusBar.currentHeight },
+        ]}
+      >
+        {/* Banner */}
+        <CarouselBanner />
+
+        {/* Categorías */}
+        <Title
+          icon={<Icono name="Tags" size={20} color="#52525b" />}
+          title="Categorías"
+        />
+        {loadingCategories ? (
+          <CategorySkeleton />
+        ) : (
+          <CategorySection categories={categories} />
+        )}
+
+        {/* Productos Destacados */}
+        <Title
+          icon={<Icono name="Star" size={20} color="#52525b" />}
+          title="Productos Destacados"
+          style={{ marginTop: 16 }}
+        />
+        {loadingProducts ? (
+          <ActivityIndicator size="large" color="#000" />
+        ) : (
+          <ProductSimilares products={products} />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -46,6 +95,44 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#FFD600", // fondo notch y header
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between", // 👈 logo a la izq, botón a la der
+    backgroundColor: "#FFD600",
+    paddingHorizontal: 16,
+  ...Platform.select({
+    ios: { paddingVertical: 8 },      // un poco de respiro en iOS
+    android: { height: 42, paddingTop:28 }, // 👈 altura fija compacta
+  }),
+  },
+  logo: {
+    aspectRatio: 3,
+    resizeMode: "contain",
+
+    ...Platform.select({
+      ios: {
+        width: 160, // ajusta al tamaño que necesites
+        height: 40,
+      },
+      android: {
+        width: 180, // ajusta al tamaño que necesites
+        height: 40,
+      }, // 👈 menos espacio en Android
+    }),
+  },
+  notificationButton: {
+    padding: 6,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.6)", // 👈 fondo suave opcional
+  },
+  content: {
+    flex: 1,
     backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 16,
   },
 });

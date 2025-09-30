@@ -32,7 +32,7 @@ interface Props {
 export const ProductSimilares: React.FC<Props> = ({
   products,
   itemWidth = 180,      // similar a w-40 / w-60 en web
-  gap = 30,             // gap-3 (12) / md:gap-6 (24) si quieres adaptar
+  gap = 8,             // gap-3 (12) / md:gap-6 (24) si quieres adaptar
   autoplaySpeed = 0.6,  // px/frame
   resumeDelayMs = 2000,
 }) => {

@@ -38,8 +38,8 @@ const Title: React.FC<Props> = ({
 };
 
 const styles = StyleSheet.create({
-  root: { marginTop: 12, 
-     marginBottom: 12,backgroundColor: "transparent" },
+  root: { marginTop: 8, 
+     marginBottom: 8,backgroundColor: "transparent" },
   row: { flexDirection: "row", alignItems: "center" },
   iconContainer: {
     height: 40, width: 40, borderRadius: 12,
@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
   textWrap: { flex: 1, minWidth: 0, backgroundColor: "transparent" },
   title: { fontSize: 20, fontWeight: "600", lineHeight: 26, color: "#111" },
   subtitle: { marginTop: 2, fontSize: 13, color: "#333" },
-  divider: { marginTop: 8, height: StyleSheet.hairlineWidth, backgroundColor: "rgba(113,113,122,0.6)" },
+  divider: { marginTop: 6, height: StyleSheet.hairlineWidth, backgroundColor: "rgba(113,113,122,0.6)" },
 });
 
 export default Title;
