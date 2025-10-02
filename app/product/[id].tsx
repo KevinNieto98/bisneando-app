@@ -5,17 +5,17 @@ import { ProductGridSimilares } from "@/components/product/ProductGridSimilares"
 import { ProductHeader } from "@/components/product/ProductHeader";
 import { ProductInfo } from "@/components/product/ProductInfo";
 import { ProductPriceBox } from "@/components/product/ProductPriceBox";
+import { ProductSkeleton } from "@/components/ProductSkeleton";
 import { fetchProductoById } from "@/services/api";
 import { useAppStore } from "@/store/useAppStore";
 import { useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   StatusBar,
   StyleSheet,
   Text,
-  View,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -39,10 +39,7 @@ export default function ProductScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#2563eb" />
-        <Text>Cargando producto...</Text>
-      </View>
+      <ProductSkeleton />
     );
   }
 

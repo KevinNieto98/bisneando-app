@@ -22,7 +22,9 @@ export function ProductActions({ cantidad, setCantidad, onWhatsApp, onShare }: a
         >
           <Ionicons name="remove" size={18} color="#000" />
         </TouchableOpacity>
+
         <Text style={styles.counterText}>{cantidad}</Text>
+
         <TouchableOpacity
           style={styles.counterButton}
           onPress={() => setCantidad(cantidad + 1)}
@@ -43,7 +45,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   wideButton: {
-    flex: 1,
+    flex: 1, // cada botón ocupa 1 parte → 1/4 del total
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -54,13 +56,14 @@ const styles = StyleSheet.create({
   whatsappButton: { backgroundColor: "#25D366" },
   shareButton: { backgroundColor: "#f2f2f2" },
   counterContainer: {
+    flex: 2, // el counter ocupa 2 partes → 1/2 del total
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between", // distribuye botones y número
     backgroundColor: "#f2f2f2",
     borderRadius: 12,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    minWidth: 100,
   },
   counterButton: {
     width: 32,
@@ -72,5 +75,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  counterText: { fontSize: 16, fontWeight: "700", textAlign: "center" },
+  counterText: {
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+    flex: 1, // hace que el número ocupe el centro del espacio
+  },
 });

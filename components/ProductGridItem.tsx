@@ -44,7 +44,6 @@ export const ProductGridItem: React.FC<Props> = ({ product, onAddToCart }) => {
   
   );
 
-  console.log('product.id', product.id);
   
 
   return (

@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import { router } from "expo-router";
 import React from "react";
 import {
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 type Props = {
@@ -50,7 +51,7 @@ export const CartSummary: React.FC<Props> = ({
       {/* Botones */}
       <Pressable
         style={styles.checkoutBtn}
-        onPress={() => navigation.navigate("Checkout" as never)}
+          onPress={() => router.push("/checkout")}
       >
         <Ionicons name="card-outline" size={18} color="white" />
         <Text style={styles.checkoutText}>Ir a pagar</Text>

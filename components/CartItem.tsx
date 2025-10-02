@@ -1,14 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React from "react";
 import {
-    Image,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 export type CartItemType = {
+  id: number;
   slug: string;
   title: string;
   price: number;
@@ -32,7 +34,10 @@ const toHNL = (n: number) =>
 
 export const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
   return (
-    <View style={styles.item}>
+    <Pressable
+      style={({ pressed }) => [styles.item, pressed && { opacity: 0.8 }]}
+      onPress={() => router.push(`/product/${item.id}`)} // 👉 lleva al detalle
+    >
       {/* Imagen */}
       <Image
         source={{
@@ -56,21 +61,32 @@ export const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
         <View style={styles.controls}>
           <Pressable
             style={styles.qtyBtn}
-            onPress={() => onChangeQty(item.slug, item.quantity - 1)}
+            onPress={(e) => {
+              e.stopPropagation(); // 👈 evita que dispare la navegación
+              onChangeQty(item.slug, Math.max(1, item.quantity - 1));
+            }}
           >
             <Text>-</Text>
           </Pressable>
+
           <Text>{item.quantity}</Text>
+
           <Pressable
             style={styles.qtyBtn}
-            onPress={() => onChangeQty(item.slug, item.quantity + 1)}
+            onPress={(e) => {
+              e.stopPropagation();
+              onChangeQty(item.slug, item.quantity + 1);
+            }}
           >
             <Text>+</Text>
           </Pressable>
 
           <Pressable
             style={styles.removeBtn}
-            onPress={() => onRemove(item.slug)}
+            onPress={(e) => {
+              e.stopPropagation();
+              onRemove(item.slug);
+            }}
           >
             <Ionicons name="trash-outline" size={18} color="red" />
           </Pressable>
@@ -79,7 +95,7 @@ export const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
 
       {/* Precio */}
       <Text style={styles.price}>{toHNL(item.price)}</Text>
-    </View>
+    </Pressable>
   );
 };
 
@@ -96,7 +112,12 @@ const styles = StyleSheet.create({
   info: { flex: 1 },
   itemTitle: { fontSize: 14, fontWeight: "600", marginBottom: 4 },
   stock: { fontSize: 12, color: "gray" },
-  controls: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
+  controls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+  },
   qtyBtn: {
     borderWidth: 1,
     borderColor: "#d4d4d8",

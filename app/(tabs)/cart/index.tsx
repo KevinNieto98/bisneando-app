@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type CartItemType = {
+ id: number;  
   slug: string;
   title: string;
   price: number;
