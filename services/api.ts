@@ -29,6 +29,7 @@ export async function fetchProductosDestacados() {
     const res = await fetch(`${API_BASE}/api/productos/?onlyActive=true&orderBy=fecha_creacion&orderDir=desc&limit=10`)
     if (!res.ok) throw new Error("Error al obtener productos")
 
+    
     return await res.json()
   } catch (error) {
     console.error("Error fetchProductosDestacados:", error)

@@ -30,6 +30,8 @@ export default function HomeScreen() {
   useEffect(() => {
     loadCategories();
     loadProducts();
+    console.log('products', products);
+    
   }, []);
 
   return (

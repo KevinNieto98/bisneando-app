@@ -31,7 +31,11 @@ export default function ProductScreen() {
     if (!id) return;
     const loadProduct = async () => {
       const data = await fetchProductoById(Number(id));
+      console.log('data', data);
+      
       setProducto(data);
+      console.log('producto', producto);
+      
       setLoading(false);
     };
     loadProduct();
@@ -64,7 +68,7 @@ export default function ProductScreen() {
         ListHeaderComponent={
           <View style={styles.content}>
             <ProductCarousel imagenes={producto.imagenes} />
-            <ProductInfo marca={producto.marca} nombre={producto.nombre_producto} />
+            <ProductInfo marca={producto.nombre_marca.toUpperCase() } nombre={producto.nombre_producto} />
             <ProductActions
               cantidad={cantidad}
               setCantidad={setCantidad}

@@ -119,16 +119,13 @@ const styles = StyleSheet.create({
     color: "#3f3f46",
     minHeight: 24,
     lineHeight: 12,
-    marginBottom: 2,
   },
   price: {
     fontSize: 11,
     fontWeight: "700",
     color: "#18181b",
-    marginBottom: 4,
   },
   cartButton: {
-    marginTop: 4,
     backgroundColor: "#2563eb",
     borderRadius: 6,
     paddingVertical: 2,

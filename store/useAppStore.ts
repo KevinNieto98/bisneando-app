@@ -51,13 +51,15 @@ export const useAppStore = create<AppStore>((set) => ({
     try {
       set({ loadingProducts: true });
       const data = await fetchProductosDestacados();
+      console.log('data', data);
+      
       const mapped = data.map((prod: any) => ({
         id: prod.id_producto, 
         slug: prod.slug,
         title: prod.nombre_producto,
         price: prod.precio,
         images: prod.imagenes.map((img: any) => img.url_imagen),
-        brand: prod.id_marca ? `Marca ${prod.id_marca}` : undefined,
+        brand: prod.nombre_marca || undefined,
       }));
       set({ products: mapped, loadingProducts: false });
     } catch (error) {
