@@ -35,3 +35,15 @@ export async function fetchProductosDestacados() {
     return []
   }
 }
+
+
+export async function fetchProductoById(id: number) {
+  try {
+    const res = await fetch(`${API_BASE}/api/productos/${id}`);
+    if (!res.ok) throw new Error("Error al obtener producto");
+    return await res.json();
+  } catch (error) {
+    console.error("fetchProductoById:", error);
+    return null;
+  }
+}

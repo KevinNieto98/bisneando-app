@@ -10,6 +10,7 @@ export interface Category {
 }
 
 export interface Product {
+  id: number; 
   slug: string;
   title: string;
   price: number;
@@ -51,6 +52,7 @@ export const useAppStore = create<AppStore>((set) => ({
       set({ loadingProducts: true });
       const data = await fetchProductosDestacados();
       const mapped = data.map((prod: any) => ({
+        id: prod.id_producto, 
         slug: prod.slug,
         title: prod.nombre_producto,
         price: prod.precio,

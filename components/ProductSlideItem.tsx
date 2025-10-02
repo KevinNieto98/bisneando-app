@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React, { useMemo } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 export interface Product {
+  id: number;
   slug: string;
   title: string;
   price: number;
@@ -31,13 +33,12 @@ export const ProductSlideItem: React.FC<Props> = ({ product, onAddToCart }) => {
   );
 
   return (
-    <View style={styles.card}>
+    <Pressable
+      style={({ pressed }) => [styles.card, pressed && { opacity: 0.95 }]}
+      onPress={() => router.push(`/product/${product.id}`)} // 👉 abre detalle
+    >
       {/* Imagen */}
-      <Image
-        source={{ uri: imageUri }}
-        style={styles.image}
-        resizeMode="cover"
-      />
+      <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
 
       {/* Info producto */}
       <View style={styles.info}>
@@ -49,7 +50,7 @@ export const ProductSlideItem: React.FC<Props> = ({ product, onAddToCart }) => {
           )}
           <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
             {product.title}
-          </Text> 
+          </Text>
           <Text style={styles.price}>{priceFormatted}</Text>
         </View>
 
@@ -59,7 +60,10 @@ export const ProductSlideItem: React.FC<Props> = ({ product, onAddToCart }) => {
             styles.cartButton,
             pressed && { opacity: 0.7 },
           ]}
-          onPress={() => onAddToCart?.(product)}
+          onPress={(e) => {
+            e.stopPropagation(); // 👈 evita que dispare router.push
+            onAddToCart?.(product);
+          }}
         >
           <Ionicons name="cart-outline" size={18} color="white" />
           <Text style={styles.cartText}>Agregar</Text>
@@ -68,7 +72,7 @@ export const ProductSlideItem: React.FC<Props> = ({ product, onAddToCart }) => {
         {/* 👇 padding fijo para que todas tengan misma altura */}
         <View style={styles.bottomSpacer} />
       </View>
-    </View>
+    </Pressable>
   );
 };
 
@@ -79,9 +83,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e5e7eb",
     overflow: "hidden",
-    width: 170, // antes 200
-    height: 240, // antes 280
-    marginHorizontal: 10, // antes 12
+    width: 170,
+    height: 240,
+    marginHorizontal: 10,
     shadowColor: "#000",
     shadowOpacity: 0.07,
     shadowRadius: 5,
@@ -89,50 +93,50 @@ const styles = StyleSheet.create({
   },
   image: {
     width: "100%",
-    height: 120, // antes 150
+    height: 120,
   },
   info: {
     flex: 1,
     justifyContent: "space-between",
-    padding: 10, // antes 12
+    padding: 10,
   },
   textWrapper: {
     flexShrink: 1,
   },
   brand: {
-    fontSize: 10, // antes 11
+    fontSize: 10,
     fontWeight: "700",
     color: "#71717a",
     textTransform: "uppercase",
     marginBottom: 2,
   },
   title: {
-    fontSize: 13, // antes 14
+    fontSize: 13,
     fontWeight: "500",
     color: "#3f3f46",
-    minHeight: 32, // antes 36
-    lineHeight: 17, // antes 18
+    minHeight: 32,
+    lineHeight: 17,
   },
   price: {
-    fontSize: 14, // antes 15
+    fontSize: 14,
     fontWeight: "700",
     color: "#18181b",
-    marginBottom: 8, // antes 10
+    marginBottom: 8,
   },
   cartButton: {
-    marginTop: 6, // antes 8
+    marginTop: 6,
     backgroundColor: "#2563eb",
-    borderRadius: 10, // antes 12
-    paddingVertical: 5, // antes 6
-    paddingHorizontal: 8, // antes 10
+    borderRadius: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5, // antes 6
+    gap: 5,
   },
   cartText: {
     color: "white",
-    fontSize: 12, // antes 13
+    fontSize: 12,
     fontWeight: "600",
   },
   bottomSpacer: {

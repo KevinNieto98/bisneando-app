@@ -20,6 +20,7 @@ export default function ExploreScreen() {
   useEffect(() => {
     loadCategories();
     loadProducts();
+    
   }, []);
 
   const loading = loadingCategories || loadingProducts; // ✅ unificar estado

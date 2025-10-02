@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React, { useMemo } from "react";
 import {
   Dimensions,
@@ -10,6 +11,7 @@ import {
 } from "react-native";
 
 export interface Product {
+  id: number;
   slug: string;
   title: string;
   price: number;
@@ -23,7 +25,6 @@ interface Props {
 }
 
 const { width } = Dimensions.get("window");
-// 📐 Ajuste: 3 columnas con 4px de separación entre ellas y 16px de padding lateral
 const CARD_MARGIN = 8;
 const CARD_WIDTH = (width - CARD_MARGIN * 2 * 3 - 32) / 3;
 
@@ -40,10 +41,20 @@ export const ProductGridItem: React.FC<Props> = ({ product, onAddToCart }) => {
         maximumFractionDigits: 2,
       }).format(product.price),
     [product.price]
+  
   );
 
+  console.log('product.id', product.id);
+  
+
   return (
-    <View style={styles.card}>
+    <Pressable
+      style={({ pressed }) => [
+        styles.card,
+        pressed && { opacity: 0.9 }, // feedback al presionar
+      ]}
+        onPress={() => router.push(`../product/${product.id}`)} // 
+    >
       <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
       <View style={styles.info}>
         <View style={styles.textWrapper}>
@@ -69,7 +80,7 @@ export const ProductGridItem: React.FC<Props> = ({ product, onAddToCart }) => {
         </Pressable>
         <View style={styles.bottomSpacer} />
       </View>
-    </View>
+    </Pressable>
   );
 };
 
