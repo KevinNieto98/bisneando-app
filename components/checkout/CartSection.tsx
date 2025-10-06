@@ -1,5 +1,6 @@
 import React from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
+import EditButton from "../ui/EditButton";
 
 export function CartSection({ items }: { items: any[] }) {
   return (
@@ -7,9 +8,7 @@ export function CartSection({ items }: { items: any[] }) {
       <Text style={styles.title}>Verificar orden</Text>
       <View style={styles.header}>
         <Text style={styles.subtitle}>Tu carrito</Text>
-        <Pressable>
-          <Text style={styles.link}>Editar carrito</Text>
-        </Pressable>
+        <EditButton/>
       </View>
 
       {items.map((product) => (

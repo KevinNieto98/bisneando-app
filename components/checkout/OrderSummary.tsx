@@ -14,7 +14,13 @@ export function OrderSummary({ summary }: any) {
 }
 
 const styles = StyleSheet.create({
-  section: { backgroundColor: "white", borderRadius: 12, padding: 16, marginBottom: 16 },
+  section: { 
+    backgroundColor: "white", 
+    borderRadius: 12, 
+    padding: 16, 
+    marginBottom: 12, 
+    marginHorizontal: 12 
+  },
   title: { fontSize: 18, fontWeight: "600", marginBottom: 8 },
   row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
 });

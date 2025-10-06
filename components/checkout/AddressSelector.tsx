@@ -1,5 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import EditButton from "../ui/EditButton";
 import Icono from "../ui/Icon.native";
 
 export function AddressSelector({ addresses, selectedId, onSelect }: any) {
@@ -18,18 +19,7 @@ export function AddressSelector({ addresses, selectedId, onSelect }: any) {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Dirección de entrega</Text>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.editButton,
-            pressed && { backgroundColor: "#e0e7ff" },
-          ]}
-          android_ripple={{ color: "#e0e7ff", borderless: true }}
-          onPress={() => console.log("Editar direcciones")}
-        >
-          <Icono name="Edit3" size={16} color="#2563eb" />
-          <Text style={styles.editText}>Editar</Text>
-        </Pressable>
+        <EditButton/>
       </View>
 
       {/* Grid de direcciones */}

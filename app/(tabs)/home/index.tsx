@@ -5,6 +5,7 @@ import { ProductSimilares } from "@/components/ProductSimilares";
 import Icono from "@/components/ui/Icon.native";
 import Title from "@/components/ui/Title.native";
 import { useAppStore } from "@/store/useAppStore";
+import { router } from "expo-router";
 import React, { useEffect } from "react";
 import {
   ActivityIndicator,
@@ -30,7 +31,6 @@ export default function HomeScreen() {
   useEffect(() => {
     loadCategories();
     loadProducts();
-    console.log('products', products);
     
   }, []);
 
@@ -51,7 +51,7 @@ export default function HomeScreen() {
         {/* Botón notificación */}
         <TouchableOpacity
           style={styles.notificationButton}
-          onPress={() => console.log("Notificaciones")}
+          onPress={() => router.push("/notifications")}
         >
           <Icono name="Bell" size={22} color="#27272a" />
         </TouchableOpacity>

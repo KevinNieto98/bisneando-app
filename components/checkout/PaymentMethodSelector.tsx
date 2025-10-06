@@ -1,36 +1,84 @@
-import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import Icono from "../ui/Icon.native";
 
-export function PaymentMethodSelector({ paymentMethod, setPaymentMethod, cardForm, setCardForm }: any) {
+export function PaymentMethodSelector({
+  paymentMethod,
+  setPaymentMethod,
+  cardForm,
+  setCardForm,
+}: any) {
   return (
     <View style={styles.section}>
+      {/* Header */}
       <Text style={styles.title}>Método de pago</Text>
-      <View style={{ flexDirection: "row", gap: 12 }}>
+
+      {/* Opciones */}
+      <View style={styles.optionsRow}>
         <Pressable
           onPress={() => setPaymentMethod("efectivo")}
-          style={[
+          style={({ pressed }) => [
             styles.option,
             paymentMethod === "efectivo" && styles.selected,
+            pressed && { transform: [{ scale: 0.97 }] },
           ]}
         >
-          <Ionicons name="wallet-outline" size={20} color="black" />
-          <Text style={styles.text}>Efectivo</Text>
+          <View
+            style={[
+              styles.iconContainer,
+              paymentMethod === "efectivo" && styles.iconContainerSelected,
+            ]}
+          >
+            <Icono
+              name="Wallet"
+              size={18}
+              color={paymentMethod === "efectivo" ? "#fff" : "#2563eb"}
+            />
+          </View>
+          <Text
+            style={[
+              styles.text,
+              paymentMethod === "efectivo" && styles.textSelected,
+            ]}
+          >
+            Efectivo
+          </Text>
         </Pressable>
+
         <Pressable
           onPress={() => setPaymentMethod("tarjeta")}
-          style={[
+          style={({ pressed }) => [
             styles.option,
             paymentMethod === "tarjeta" && styles.selected,
+            pressed && { transform: [{ scale: 0.97 }] },
           ]}
         >
-          <Ionicons name="card-outline" size={20} color="black" />
-          <Text style={styles.text}>Tarjeta</Text>
+          <View
+            style={[
+              styles.iconContainer,
+              paymentMethod === "tarjeta" && styles.iconContainerSelected,
+            ]}
+          >
+            <Icono
+              name="CreditCard"
+              size={18}
+              color={paymentMethod === "tarjeta" ? "#fff" : "#2563eb"}
+            />
+          </View>
+          <Text
+            style={[
+              styles.text,
+              paymentMethod === "tarjeta" && styles.textSelected,
+            ]}
+          >
+            Tarjeta
+          </Text>
         </Pressable>
       </View>
 
+      {/* Formulario de tarjeta */}
       {paymentMethod === "tarjeta" && (
-        <View style={{ marginTop: 16 }}>
+        <View style={styles.cardForm}>
           <TextInput
             style={styles.input}
             placeholder="Titular de la tarjeta"
@@ -44,7 +92,7 @@ export function PaymentMethodSelector({ paymentMethod, setPaymentMethod, cardFor
             value={cardForm.number}
             onChangeText={(t) => setCardForm((f: any) => ({ ...f, number: t }))}
           />
-          <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={styles.row}>
             <TextInput
               style={[styles.input, { flex: 1 }]}
               placeholder="MM/AA"
@@ -67,21 +115,84 @@ export function PaymentMethodSelector({ paymentMethod, setPaymentMethod, cardFor
 }
 
 const styles = StyleSheet.create({
-  section: { backgroundColor: "white", borderRadius: 12,
-        marginHorizontal: 8,
-    padding: 16, marginBottom: 16 },
-  title: { fontSize: 18, fontWeight: "600", marginBottom: 8 },
+  section: {
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 8,
+    marginBottom: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 12,
+  },
+  optionsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   option: {
     flex: 1,
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    backgroundColor: "#f9fafb",
     alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
     flexDirection: "row",
-    gap: 6,
+    gap: 8,
   },
-  selected: { borderColor: "black", backgroundColor: "#f3f4f6" },
-  text: { fontWeight: "500" },
-  input: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 8, padding: 10, marginBottom: 10, fontSize: 14 },
+  selected: {
+    borderColor: "#2563eb",
+    backgroundColor: "#f0f9ff",
+    shadowColor: "#2563eb",
+    shadowOpacity: 0.15,
+    shadowRadius: 5,
+  },
+  iconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "#e0e7ff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconContainerSelected: {
+    backgroundColor: "#2563eb",
+  },
+  text: {
+    fontWeight: "600",
+    fontSize: 14,
+    color: "#374151",
+  },
+  textSelected: {
+    color: "#2563eb",
+  },
+  cardForm: {
+    marginTop: 16,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    fontSize: 14,
+  },
+  row: {
+    flexDirection: "row",
+    gap: 10,
+  },
 });

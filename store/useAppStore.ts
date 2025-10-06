@@ -51,7 +51,6 @@ export const useAppStore = create<AppStore>((set) => ({
     try {
       set({ loadingProducts: true });
       const data = await fetchProductosDestacados();
-      console.log('data', data);
       
       const mapped = data.map((prod: any) => ({
         id: prod.id_producto, 

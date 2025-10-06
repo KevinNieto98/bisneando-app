@@ -31,11 +31,9 @@ export default function ProductScreen() {
     if (!id) return;
     const loadProduct = async () => {
       const data = await fetchProductoById(Number(id));
-      console.log('data', data);
-      
+
       setProducto(data);
-      console.log('producto', producto);
-      
+
       setLoading(false);
     };
     loadProduct();
