@@ -31,6 +31,9 @@ export default function RootLayout() {
           <Stack.Screen name="notifications" options={{ headerShown: false }} />
           <Stack.Screen name="address" options={{ headerShown: false }} />
           <Stack.Screen name="new_address" options={{ headerShown: false }} />
+          <Stack.Screen name="edit_profile" options={{ headerShown: false }} />
+          <Stack.Screen name="orders" options={{ headerShown: false }} />
+          <Stack.Screen name="legal_information" options={{ headerShown: false }} />
           <Stack.Screen name="+not-found" />
         </Stack>
         <StatusBar style="auto" />

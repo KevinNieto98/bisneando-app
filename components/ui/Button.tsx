@@ -23,7 +23,8 @@ export const Button: React.FC<AppButtonProps> = ({
 }) => {
   const colors = {
     primary: { bg: "#2563eb", pressed: "#1e40af", text: "#fff" },
-    success: { bg: "#16a34a", pressed: "#15803d", text: "#fff" },
+    success: { bg: "#22c55e", pressed: "#16a34a", text: "#fff" },
+
     danger: { bg: "#dc2626", pressed: "#b91c1c", text: "#fff" },
     warning: { bg: "#f59e0b", pressed: "#d97706", text: "#fff" },
     gray: { bg: "#6b7280", pressed: "#4b5563", text: "#fff" },

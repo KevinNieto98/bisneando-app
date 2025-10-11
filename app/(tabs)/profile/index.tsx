@@ -1,3 +1,4 @@
+import Icono from '@/components/ui/Icon.native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { router } from 'expo-router';
@@ -51,7 +52,7 @@ export default function AccountScreen() {
       <View style={styles.whiteSection}>
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={() => router.push('/address')}
+          onPress={() => router.push('/edit_profile')}
         >
           <Ionicons name="person-outline" size={22} color="#27272a" />
           <Text style={styles.menuText}>Editar Perfil</Text>
@@ -67,15 +68,16 @@ export default function AccountScreen() {
 
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={() => console.log('Pedidos')}
+          onPress={() => router.push('/orders')}
+
         >
-          <Ionicons name="ticket-outline" size={22} color="#27272a" />
+          <Icono name="Tag" size={22} color="#27272a" />
           <Text style={styles.menuText}>Mis pedidos</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={() => console.log('Legal')}
+          onPress={() => router.push('/legal_information')}
         >
           <Ionicons name="document-text-outline" size={22} color="#27272a" />
           <Text style={styles.menuText}>Información legal</Text>
