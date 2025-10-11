@@ -2,7 +2,7 @@ import { fetchActivePortadas } from "@/services/api"
 import React, { useEffect, useState } from "react"
 import { Dimensions, Image, StyleSheet, View } from "react-native"
 import { SwiperFlatList } from "react-native-swiper-flatlist"
-import { PortadaSkeleton } from "./PortadaSkeleton"
+import { PortadaSkeleton } from "."
 
 const { width } = Dimensions.get("window")
 

@@ -5,7 +5,7 @@ import { ProductGridSimilares } from "@/components/product/ProductGridSimilares"
 import { ProductHeader } from "@/components/product/ProductHeader";
 import { ProductInfo } from "@/components/product/ProductInfo";
 import { ProductPriceBox } from "@/components/product/ProductPriceBox";
-import { ProductSkeleton } from "@/components/ProductSkeleton";
+import { ProductSkeleton } from "@/components/skeletons/ProductSkeleton";
 import { fetchProductoById } from "@/services/api";
 import { useAppStore } from "@/store/useAppStore";
 import { useLocalSearchParams } from "expo-router";

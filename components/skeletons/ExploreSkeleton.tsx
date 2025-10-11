@@ -1,3 +1,4 @@
+// components/skeletons/ExploreSkeleton.tsx
 import React from "react";
 import { Dimensions, FlatList, ScrollView, StyleSheet, View } from "react-native";
 
@@ -35,6 +36,8 @@ const ExploreSkeleton = () => {
   );
 };
 
+export default ExploreSkeleton;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -67,5 +70,3 @@ const styles = StyleSheet.create({
     margin: CARD_MARGIN,
   },
 });
-
-export default ExploreSkeleton;

@@ -4,33 +4,41 @@ import { OrderSummary } from "@/components/checkout/OrderSummary";
 import { PaymentMethodSelector } from "@/components/checkout/PaymentMethodSelector";
 import { PlaceOrderButton } from "@/components/checkout/PlaceOrderButton";
 import { ProductHeader } from "@/components/product/ProductHeader";
+import useAuth from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
+import { router } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { ScrollView, StatusBar, StyleSheet } from "react-native";
+import { ScrollView, StatusBar, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function CheckoutScreen() {
+  const { user, loading } = useAuth(); // 👈 obtener el usuario autenticado
+  const { products, loadProducts } = useAppStore();
+
   const [selectedAddressId, setSelectedAddressId] = useState("addr_1");
   const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "tarjeta" | "">("");
   const [cardForm, setCardForm] = useState({ holder: "", number: "", expiry: "", cvv: "" });
+  const [items, setItems] = useState<any[]>([]);
 
-  const { products, loadProducts } = useAppStore();
+  // 🚫 Si no hay sesión, redirigir al login
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/(auth)/login");
+    }
+  }, [loading, user]);
 
-  type CartItem = {
-    id: number;
-    slug: string;
-    title: string;
-    price: number;
-    images: string[];
-    brand?: string;
-    inStock?: number;
-    quantity: number;
-    subtotal?: number;
-  };
+  // 🕓 Mostrar mientras se valida sesión
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Cargando sesión...</Text>
+      </View>
+    );
+  }
+
+  if (!user) return null; // evita render mientras redirige
 
   // 🧩 Cargar productos del store
-  const [items, setItems] = useState<CartItem[]>([]);
-
   useEffect(() => {
     loadProducts();
   }, [loadProducts]);
@@ -120,4 +128,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFD600" },
   scrollArea: { flex: 1, marginBottom: 3, borderRadius: 12 },
   scrollContent: { padding: 2 },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#52525b",
+  },
 });

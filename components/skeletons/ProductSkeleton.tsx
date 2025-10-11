@@ -2,7 +2,7 @@ import React from "react";
 import { StatusBar, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-export function ProductSkeleton() {
+const ProductSkeleton = () => {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
@@ -45,7 +45,9 @@ export function ProductSkeleton() {
       </View>
     </SafeAreaView>
   );
-}
+};
+
+export default ProductSkeleton;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFD600" },

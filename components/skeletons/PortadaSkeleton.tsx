@@ -10,7 +10,7 @@ const HEIGHT = (() => {
   return 180
 })()
 
-export const PortadaSkeleton = () => {
+const PortadaSkeleton = () => {
   return (
     <View style={[styles.carouselWrapper, { height: HEIGHT }]}>
       <View style={styles.slide}>
@@ -41,3 +41,4 @@ const styles = StyleSheet.create({
     backgroundColor: "#e5e7eb", // gris claro
   },
 })
+export default PortadaSkeleton;

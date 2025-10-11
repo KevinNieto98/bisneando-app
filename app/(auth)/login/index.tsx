@@ -1,3 +1,4 @@
+import { useBackHandler } from "@/hooks/useBackHandler";
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
 import { useState } from "react";
@@ -14,6 +15,8 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function LoginPage() {
+    const { handleBack } = useBackHandler();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
     const insets = useSafeAreaInsets(); // 👈
@@ -21,6 +24,7 @@ export default function LoginPage() {
   const handleSubmit = () => {
     router.replace("/(tabs)/home");
   };
+
 
   return (
     <View style={styles.screen}>
@@ -30,7 +34,7 @@ export default function LoginPage() {
       >
         <SafeAreaView style={styles.safe}>
           <TouchableOpacity
-            onPress={() => router.replace("/(tabs)/home")}
+            onPress={() => handleBack()}
             style={{
               position: "absolute",
               top: insets.top + 8,    // 👈 debajo del notch

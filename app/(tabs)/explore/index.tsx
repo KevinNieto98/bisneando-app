@@ -1,6 +1,7 @@
+import { ExploreSkeleton } from "@/components";
 import { CategoriesContainer } from "@/components/CategoriesContainer";
-import ExploreSkeleton from "@/components/ExploreSkeleton";
 import { ProductGrid } from "@/components/ProductGrid";
+
 import { Search } from "@/components/ui/Search";
 import { useAppStore } from "@/store/useAppStore";
 import { useEffect } from "react";

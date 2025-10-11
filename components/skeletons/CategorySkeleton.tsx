@@ -1,8 +1,8 @@
-// CategorySkeleton.tsx
+// components/skeletons/CategorySkeleton.tsx
 import React from "react";
 import { FlatList, View } from "react-native";
 
-const skeletonItems = Array.from({ length: 6 }) // mostramos 6 placeholders
+const skeletonItems = Array.from({ length: 6 }); // mostramos 6 placeholders
 
 const CategorySkeleton = () => {
   return (
@@ -50,7 +50,7 @@ const CategorySkeleton = () => {
         </View>
       )}
     />
-  )
-}
+  );
+};
 
-export default CategorySkeleton
+export default CategorySkeleton;

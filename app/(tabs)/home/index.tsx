@@ -1,9 +1,11 @@
+import { CategorySkeleton } from "@/components";
 import { CarouselBanner } from "@/components/CarouselBanner";
-import CategorySkeleton from "@/components/CategorySkeleton";
 import CategorySection from "@/components/CategoySection";
 import { ProductSimilares } from "@/components/ProductSimilares";
+
 import Icono from "@/components/ui/Icon.native";
 import Title from "@/components/ui/Title.native";
+import useAuth from "@/hooks/useAuth"; // 👈 importamos el hook
 import { useAppStore } from "@/store/useAppStore";
 import { router } from "expo-router";
 import React, { useEffect } from "react";
@@ -28,10 +30,11 @@ export default function HomeScreen() {
     loadProducts,
   } = useAppStore();
 
+  const { user } = useAuth(); // 👈 obtenemos el usuario actual
+
   useEffect(() => {
     loadCategories();
     loadProducts();
-    
   }, []);
 
   return (
@@ -48,13 +51,15 @@ export default function HomeScreen() {
           resizeMode="contain"
         />
 
-        {/* Botón notificación */}
-        <TouchableOpacity
-          style={styles.notificationButton}
-          onPress={() => router.push("/notifications")}
-        >
-          <Icono name="Bell" size={22} color="#27272a" />
-        </TouchableOpacity>
+        {/* 👇 Botón notificación solo si está logueado */}
+        {user && (
+          <TouchableOpacity
+            style={styles.notificationButton}
+            onPress={() => router.push("/notifications")}
+          >
+            <Icono name="Bell" size={22} color="#27272a" />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Contenido */}
@@ -97,38 +102,31 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFD600", // fondo notch y header
+    backgroundColor: "#FFD600",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between", // 👈 logo a la izq, botón a la der
+    justifyContent: "space-between",
     backgroundColor: "#FFD600",
     paddingHorizontal: 16,
-  ...Platform.select({
-    ios: { paddingVertical: 8 },      // un poco de respiro en iOS
-    android: { height: 42, paddingTop:28 }, // 👈 altura fija compacta
-  }),
+    ...Platform.select({
+      ios: { paddingVertical: 8 },
+      android: { height: 42, paddingTop: 28 },
+    }),
   },
   logo: {
     aspectRatio: 3,
     resizeMode: "contain",
-
     ...Platform.select({
-      ios: {
-        width: 160, // ajusta al tamaño que necesites
-        height: 40,
-      },
-      android: {
-        width: 180, // ajusta al tamaño que necesites
-        height: 40,
-      }, // 👈 menos espacio en Android
+      ios: { width: 160, height: 40 },
+      android: { width: 180, height: 40 },
     }),
   },
   notificationButton: {
     padding: 6,
     borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.6)", // 👈 fondo suave opcional
+    backgroundColor: "rgba(255,255,255,0.6)",
   },
   content: {
     flex: 1,
