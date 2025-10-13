@@ -12,33 +12,22 @@ import { ScrollView, StatusBar, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function CheckoutScreen() {
-  const { user, loading } = useAuth(); // 👈 obtener el usuario autenticado
+  const { user, loading } = useAuth();
   const { products, loadProducts } = useAppStore();
 
+  // 🔹 Hooks de estado (deben estar siempre antes de cualquier return)
   const [selectedAddressId, setSelectedAddressId] = useState("addr_1");
   const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "tarjeta" | "">("");
   const [cardForm, setCardForm] = useState({ holder: "", number: "", expiry: "", cvv: "" });
   const [items, setItems] = useState<any[]>([]);
 
-  // 🚫 Si no hay sesión, redirigir al login
+  // 🔹 Efectos también arriba, siempre definidos antes de cualquier condicional
   useEffect(() => {
     if (!loading && !user) {
       router.replace("/(auth)/login");
     }
   }, [loading, user]);
 
-  // 🕓 Mostrar mientras se valida sesión
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Cargando sesión...</Text>
-      </View>
-    );
-  }
-
-  if (!user) return null; // evita render mientras redirige
-
-  // 🧩 Cargar productos del store
   useEffect(() => {
     loadProducts();
   }, [loadProducts]);
@@ -94,12 +83,23 @@ export default function CheckoutScreen() {
 
   const canPlaceOrder = selectedAddressId && paymentMethod && isCardValid;
 
+  // ⚠️ Ahora sí, después de todos los hooks
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Cargando sesión...</Text>
+      </View>
+    );
+  }
+
+  if (!user) return null;
+
+  // ✅ Render principal
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
       <ProductHeader showCartButton={false} />
 
-      {/* Contenido */}
       <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
         <AddressSelector
           addresses={addresses}
@@ -117,7 +117,6 @@ export default function CheckoutScreen() {
         <CartSection items={items} />
       </ScrollView>
 
-      {/* Resumen y botón */}
       <OrderSummary summary={summary} />
       <PlaceOrderButton disabled={!canPlaceOrder} />
     </SafeAreaView>

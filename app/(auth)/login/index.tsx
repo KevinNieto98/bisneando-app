@@ -1,6 +1,8 @@
 import AlertModal from "@/components/ui/AlertModal";
+import LoginButton from "@/components/ui/LoginButton";
 import LoginInput from "@/components/ui/LoginInput";
 import { useBackHandler } from "@/hooks/useBackHandler";
+import { supabase } from "@/lib/supabase";
 import { validateEmail } from "@/utils/validations";
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
@@ -25,6 +27,7 @@ export default function LoginPage() {
 
   // Modal
   const [isModalVisible, setModalVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [modalMessage, setModalMessage] = useState("");
 
   // Estados para borde rojo
@@ -36,34 +39,69 @@ export default function LoginPage() {
     setModalVisible(true);
   };
 
-  const handleSubmit = () => {
-    // Reiniciar errores antes de validar
-    setEmailError(false);
-    setPasswordError(false);
+const handleSubmit = async () => {
+  // Reiniciar errores antes de validar
+  setEmailError(false);
+  setPasswordError(false);
 
-    let hasError = false;
+  let hasError = false;
 
-    if (!email.trim()) {
-      hasError = true;
-    }
-    if (!password.trim()) {
-      hasError = true;
-    }
+  if (!email.trim()) {
+    hasError = true;
+  }
+  if (!password.trim()) {
+    hasError = true;
+  }
 
-    if (hasError) {
-      showModal("Por favor, completa todos los campos requeridos.");
+  if (hasError) {
+    showModal("Por favor, completa todos los campos requeridos.");
+    return;
+  }
+
+  // Validar correo
+  const { valid, message } = validateEmail(email);
+  if (!valid) {
+    showModal(message || "Correo inválido.");
+    return;
+  }
+
+  try {
+    setIsLoading(true);
+
+    // ✅ Autenticación con Supabase
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: password.trim(),
+    });
+
+    if (error) {
+      // Si el usuario no existe o la contraseña es incorrecta
+      if (error.message.includes("Invalid login credentials")) {
+        showModal("Correo o contraseña incorrectos.");
+      } else {
+        showModal(error.message);
+      }
       return;
     }
 
-    // Validar correo
-    const { valid, message } = validateEmail(email);
-    if (!valid) {
-      showModal(message || "Correo inválido.");
+    // ✅ Guardar sesión (Supabase ya lo hace con AsyncStorage)
+    // pero puedes verificarla así:
+    const { session } = data;
+    if (!session) {
+      showModal("No se pudo iniciar sesión. Intenta nuevamente.");
       return;
     }
 
+    // ✅ Redirigir al home
     router.replace("/(tabs)/home");
-  };
+  } catch (err: any) {
+    showModal("Ocurrió un error al iniciar sesión.");
+    console.error(err);
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   const handleModalClose = () => {
     setModalVisible(false);
@@ -124,9 +162,11 @@ export default function LoginPage() {
                   onTyping={() => setPasswordError(false)} // 👈 igual aquí
                 />
 
-                <TouchableOpacity onPress={handleSubmit} style={styles.button}>
-                  <Text style={styles.buttonText}>Entrar</Text>
-                </TouchableOpacity>
+                <LoginButton
+  title="Entrar"
+  onPress={handleSubmit}
+  disabled={isLoading}
+/>
 
                 <View style={{ alignItems: "center", marginTop: 4 }}>
                   <Link href="/(auth)/forgot-password" style={styles.link}>
