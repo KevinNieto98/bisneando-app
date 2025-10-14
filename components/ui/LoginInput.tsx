@@ -11,7 +11,8 @@ interface LoginInputProps {
   required?: boolean;
   disabled?: boolean;
   showError?: boolean; // 🔴 Controlado por el padre
-  onTyping?: () => void; // 👈 Nuevo callback para limpiar error al escribir
+  onTyping?: () => void; // 👈 callback para limpiar error al escribir
+  placeholder?: string; // ✅ Nuevo: opcional, sobreescribe el placeholder por defecto
 }
 
 const LoginInput: React.FC<LoginInputProps> = ({
@@ -23,6 +24,7 @@ const LoginInput: React.FC<LoginInputProps> = ({
   disabled = false,
   showError = false,
   onTyping,
+  placeholder, // <- opcional
 }) => {
   const handleChange = (text: string) => {
     if (type === "phone" && !text.startsWith("+504")) {
@@ -46,9 +48,26 @@ const LoginInput: React.FC<LoginInputProps> = ({
     }
   };
 
+  const getDefaultPlaceholder = () => {
+    if (placeholder) return placeholder; // ✅ si viene, lo usamos
+    switch (type) {
+      case "password":
+        return "••••••••";
+      case "phone":
+        return "+504 9XXXXXXX";
+      case "email":
+        return "correo@ejemplo.com";
+      default:
+        return "Ingrese texto";
+    }
+  };
+
   return (
     <View style={{ marginBottom: 16 }}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>
+        {label}
+        {required ? " *" : ""}
+      </Text>
 
       <TextInput
         value={value}
@@ -57,13 +76,7 @@ const LoginInput: React.FC<LoginInputProps> = ({
         secureTextEntry={type === "password"}
         keyboardType={getKeyboardType()}
         autoCapitalize="none"
-        placeholder={
-          type === "password"
-            ? "••••••••"
-            : type === "phone"
-            ? "+504 9XXXXXXX"
-            : "Ingrese texto"
-        }
+        placeholder={getDefaultPlaceholder()}
         style={[
           styles.input,
           disabled && { backgroundColor: "#f3f4f6", color: "#9ca3af" },

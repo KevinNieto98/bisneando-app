@@ -1,3 +1,4 @@
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import Icono from "@/components/ui/Icon.native";
 import useAuth from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -19,6 +20,9 @@ export default function AccountScreen() {
   const navigation = useNavigation();
   const { user, loading } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // Modal de confirmación de logout
+  const [confirmVisible, setConfirmVisible] = useState(false);
 
   // ✅ Redirigir si no hay sesión
   useEffect(() => {
@@ -62,91 +66,108 @@ export default function AccountScreen() {
   if (!user) return null;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Zona amarilla */}
-      <View style={styles.yellowSection}>
-        {/* Header con botón de volver */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color="#1e293b" />
-            <Text style={styles.backText}>Volver</Text>
+    <>
+      <ScrollView contentContainerStyle={styles.container}>
+        {/* Zona amarilla */}
+        <View style={styles.yellowSection}>
+          {/* Header con botón de volver */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={22} color="#1e293b" />
+              <Text style={styles.backText}>Volver</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Perfil */}
+          <View style={styles.profileSection}>
+            {user.user_metadata?.avatar_url ? (
+              <Image source={{ uri: user.user_metadata.avatar_url }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Ionicons name="person-circle-outline" size={80} color="#a16207" />
+              </View>
+            )}
+
+            <Text style={styles.userName}>
+              {user.user_metadata?.name || "Usuario sin nombre"}
+            </Text>
+
+            {user.email && <Text style={styles.emailText}>{user.email}</Text>}
+          </View>
+        </View>
+
+        {/* Contenido blanco */}
+        <View style={styles.whiteSection}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/edit_profile")}
+          >
+            <Ionicons name="person-outline" size={22} color="#27272a" />
+            <Text style={styles.menuText}>Editar Perfil</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/address")}
+          >
+            <Ionicons name="location-outline" size={22} color="#27272a" />
+            <Text style={styles.menuText}>Mis direcciones</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/orders")}
+          >
+            <Icono name="Tag" size={22} color="#27272a" />
+            <Text style={styles.menuText}>Mis pedidos</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/legal_information")}
+          >
+            <Ionicons name="document-text-outline" size={22} color="#27272a" />
+            <Text style={styles.menuText}>Información legal</Text>
+          </TouchableOpacity>
+
+          <View style={styles.separator} />
+
+          {/* 🚪 Botón de cerrar sesión */}
+          <TouchableOpacity
+            style={[styles.logoutButton, loggingOut && { opacity: 0.6 }]}
+            onPress={() => setConfirmVisible(true)} // 👈 mostrar ConfirmModal
+            disabled={loggingOut}
+          >
+            <Ionicons name="log-out-outline" size={22} color="#dc2626" />
+            <Text style={styles.logoutText}>
+              {loggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Versión 1.0.1</Text>
+            <Text style={styles.footerText}>
+              Powered by DDG Soluciones Digitales 2025
+            </Text>
+          </View>
         </View>
+      </ScrollView>
 
-        {/* Perfil */}
-        <View style={styles.profileSection}>
-          {user.user_metadata?.avatar_url ? (
-            <Image source={{ uri: user.user_metadata.avatar_url }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Ionicons name="person-circle-outline" size={80} color="#a16207" />
-            </View>
-          )}
-
-          <Text style={styles.userName}>
-            {user.user_metadata?.name || "Usuario sin nombre"}
-          </Text>
-
-          {user.email && <Text style={styles.emailText}>{user.email}</Text>}
-        </View>
-      </View>
-
-      {/* Contenido blanco */}
-      <View style={styles.whiteSection}>
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => router.push("/edit_profile")}
-        >
-          <Ionicons name="person-outline" size={22} color="#27272a" />
-          <Text style={styles.menuText}>Editar Perfil</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => router.push("/address")}
-        >
-          <Ionicons name="location-outline" size={22} color="#27272a" />
-          <Text style={styles.menuText}>Mis direcciones</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => router.push("/orders")}
-        >
-          <Icono name="Tag" size={22} color="#27272a" />
-          <Text style={styles.menuText}>Mis pedidos</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => router.push("/legal_information")}
-        >
-          <Ionicons name="document-text-outline" size={22} color="#27272a" />
-          <Text style={styles.menuText}>Información legal</Text>
-        </TouchableOpacity>
-
-        <View style={styles.separator} />
-
-        {/* 🚪 Botón de cerrar sesión */}
-        <TouchableOpacity
-          style={[styles.logoutButton, loggingOut && { opacity: 0.6 }]}
-          onPress={handleLogout}
-          disabled={loggingOut}
-        >
-          <Ionicons name="log-out-outline" size={22} color="#dc2626" />
-          <Text style={styles.logoutText}>
-            {loggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
-          </Text>
-        </TouchableOpacity>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Versión 1.0.1</Text>
-          <Text style={styles.footerText}>
-            Powered by DDG Soluciones Digitales 2025
-          </Text>
-        </View>
-      </View>
-    </ScrollView>
+      {/* Confirmación de cierre de sesión */}
+      <ConfirmModal
+        visible={confirmVisible}
+        title="Confirmación"
+        message="¿Estás seguro que deseas cerrar sesión?"
+        icon="help-circle"
+        confirmText="Sí, cerrar sesión"
+        cancelText="Cancelar"
+        onConfirm={() => {
+          setConfirmVisible(false);
+          handleLogout();
+        }}
+        onCancel={() => setConfirmVisible(false)}
+      />
+    </>
   );
 }
 

@@ -11,6 +11,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -39,69 +40,61 @@ export default function LoginPage() {
     setModalVisible(true);
   };
 
-const handleSubmit = async () => {
-  // Reiniciar errores antes de validar
-  setEmailError(false);
-  setPasswordError(false);
+  const handleSubmit = async () => {
+    // Reiniciar errores antes de validar
+    setEmailError(false);
+    setPasswordError(false);
 
-  let hasError = false;
+    let hasError = false;
 
-  if (!email.trim()) {
-    hasError = true;
-  }
-  if (!password.trim()) {
-    hasError = true;
-  }
+    if (!email.trim()) hasError = true;
+    if (!password.trim()) hasError = true;
 
-  if (hasError) {
-    showModal("Por favor, completa todos los campos requeridos.");
-    return;
-  }
+    if (hasError) {
+      showModal("Por favor, completa todos los campos requeridos.");
+      return;
+    }
 
-  // Validar correo
-  const { valid, message } = validateEmail(email);
-  if (!valid) {
-    showModal(message || "Correo inválido.");
-    return;
-  }
+    // Validar correo
+    const { valid, message } = validateEmail(email);
+    if (!valid) {
+      showModal(message || "Correo inválido.");
+      return;
+    }
 
-  try {
-    setIsLoading(true);
+    try {
+      setIsLoading(true);
 
-    // ✅ Autenticación con Supabase
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password: password.trim(),
-    });
+      // ✅ Autenticación con Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      });
 
-    if (error) {
-      // Si el usuario no existe o la contraseña es incorrecta
-      if (error.message.includes("Invalid login credentials")) {
-        showModal("Correo o contraseña incorrectos.");
-      } else {
-        showModal(error.message);
+      if (error) {
+        if (error.message.includes("Invalid login credentials")) {
+          showModal("Correo o contraseña incorrectos.");
+        } else {
+          showModal(error.message);
+        }
+        return;
       }
-      return;
+
+      const { session } = data;
+      if (!session) {
+        showModal("No se pudo iniciar sesión. Intenta nuevamente.");
+        return;
+      }
+
+      // ✅ Redirigir al home
+      router.replace("/(tabs)/home");
+    } catch (err: any) {
+      showModal("Ocurrió un error al iniciar sesión.");
+      console.error(err);
+    } finally {
+      setIsLoading(false);
     }
-
-    // ✅ Guardar sesión (Supabase ya lo hace con AsyncStorage)
-    // pero puedes verificarla así:
-    const { session } = data;
-    if (!session) {
-      showModal("No se pudo iniciar sesión. Intenta nuevamente.");
-      return;
-    }
-
-    // ✅ Redirigir al home
-    router.replace("/(tabs)/home");
-  } catch (err: any) {
-    showModal("Ocurrió un error al iniciar sesión.");
-    console.error(err);
-  } finally {
-    setIsLoading(false);
-  }
-};
-
+  };
 
   const handleModalClose = () => {
     setModalVisible(false);
@@ -113,7 +106,8 @@ const handleSubmit = async () => {
   return (
     <View style={styles.screen}>
       <KeyboardAvoidingView
-        behavior={Platform.select({ ios: "padding", android: undefined })}
+        behavior={Platform.OS === "ios" ? "padding" : "height"} // 👈 Android ya no se tapa
+        keyboardVerticalOffset={insets.top + 56}                // 👈 ajusta según tu header
         style={{ flex: 1 }}
       >
         <SafeAreaView style={styles.safe}>
@@ -141,46 +135,46 @@ const handleSubmit = async () => {
             <View style={styles.card}>
               <Text style={styles.title}>Iniciar Sesión</Text>
 
-              <View style={{ gap: 14 }}>
-                <LoginInput
-                  label="Correo"
-                  type="email"
-                  value={email}
-                  onChange={setEmail}
-                  required
-                  showError={emailError}
-                  onTyping={() => setEmailError(false)} // 👈 quita el borde rojo al escribir
-                />
+              {/* 👇 Scroll para que no tape el teclado (especialmente password) */}
+              <ScrollView
+                contentContainerStyle={{ paddingBottom: 12 }}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={{ gap: 14 }}>
+                  <LoginInput
+                    label="Correo"
+                    type="email"
+                    value={email}
+                    onChange={setEmail}
+                    required
+                    showError={emailError}
+                    onTyping={() => setEmailError(false)}
+                  />
 
-                <LoginInput
-                  label="Contraseña"
-                  type="password"
-                  value={password}
-                  onChange={setPassword}
-                  required
-                  showError={passwordError}
-                  onTyping={() => setPasswordError(false)} // 👈 igual aquí
-                />
+                  <LoginInput
+                    label="Contraseña"
+                    type="password"
+                    value={password}
+                    onChange={setPassword}
+                    required
+                    showError={passwordError}
+                    onTyping={() => setPasswordError(false)}
+                  />
 
-                <LoginButton
-  title="Entrar"
-  onPress={handleSubmit}
-  disabled={isLoading}
-/>
+                  <LoginButton
+                    title="Entrar"
+                    onPress={handleSubmit}
+                    disabled={isLoading}
+                  />
 
-                <View style={{ alignItems: "center", marginTop: 4 }}>
-                  <Link href="/(auth)/forgot-password" style={styles.link}>
-                    ¿Olvidaste tu contraseña?
-                  </Link>
+                  <View style={{ alignItems: "center", marginTop: 4 }}>
+                    <Link href="/(auth)/forgot-password" style={styles.link}>
+                      ¿Olvidaste tu contraseña?
+                    </Link>
+                  </View>
                 </View>
-              </View>
-
-              <Text style={styles.footer}>
-                ¿No tienes cuenta?{" "}
-                <Link href="/(auth)/register" style={styles.linkBold}>
-                  Regístrate
-                </Link>
-              </Text>
+              </ScrollView>
             </View>
           </View>
         </SafeAreaView>
@@ -219,15 +213,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 18,
   },
-  button: {
-    marginTop: 4,
-    width: "100%",
-    backgroundColor: "#eab308",
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  buttonText: { color: "white", fontWeight: "700" },
   link: { color: "#a16207", fontWeight: "600", fontSize: 13 },
   linkBold: { color: "#a16207", fontWeight: "700" },
   footer: {

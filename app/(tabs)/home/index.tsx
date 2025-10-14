@@ -7,18 +7,19 @@ import Icono from "@/components/ui/Icon.native";
 import Title from "@/components/ui/Title.native";
 import useAuth from "@/hooks/useAuth"; // 👈 importamos el hook
 import { useAppStore } from "@/store/useAppStore";
-import { router } from "expo-router";
-import React, { useEffect } from "react";
+import { router, useLocalSearchParams, usePathname } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
   Platform,
   StatusBar,
   StyleSheet,
+  Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
   const {
@@ -32,15 +33,42 @@ export default function HomeScreen() {
 
   const { user } = useAuth(); // 👈 obtenemos el usuario actual
 
+  // 👇 Banner "Bienvenido a Bisneando" (cuando venimos de registro)
+  const { welcome } = useLocalSearchParams();
+  const pathname = usePathname();
+  const insets = useSafeAreaInsets();
+  const [showBanner, setShowBanner] = useState(welcome === "1" || welcome === "true");
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     loadCategories();
     loadProducts();
   }, []);
 
+  useEffect(() => {
+    if (showBanner) {
+      // ocultar en 5s y limpiar el query param
+      bannerTimerRef.current = setTimeout(() => {
+        setShowBanner(false);
+        router.replace(pathname as any); // quita ?welcome=1 para que no reaparezca
+      }, 5000);
+    }
+    return () => {
+      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+    };
+  }, [showBanner]);
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* Notch amarillo */}
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
+
+      {/* Banner de bienvenida (overlay superior) */}
+      {showBanner && (
+        <View style={[styles.successBanner, { paddingTop: insets.top + 8 }]}>
+          <Text style={styles.successText}>Bienvenido a Bisneando</Text>
+        </View>
+      )}
 
       {/* Header */}
       <View style={styles.header}>
@@ -134,5 +162,27 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 16,
+  },
+  successBanner: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#16a34a",
+    zIndex: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  successText: {
+    color: "white",
+    fontWeight: "800",
+    textAlign: "center",
   },
 });
