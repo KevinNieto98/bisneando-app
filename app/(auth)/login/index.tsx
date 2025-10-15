@@ -3,7 +3,9 @@ import LoginButton from "@/components/ui/LoginButton";
 import LoginInput from "@/components/ui/LoginInput";
 import { useBackHandler } from "@/hooks/useBackHandler";
 import { supabase } from "@/lib/supabase";
+import { loginRequestApp } from "@/services/api";
 import { validateEmail } from "@/utils/validations";
+
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
 import { useState } from "react";
@@ -65,32 +67,36 @@ export default function LoginPage() {
     try {
       setIsLoading(true);
 
-      // ✅ Autenticación con Supabase
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password.trim(),
-      });
+      // 👇 Llamada a tu API /api/login (platform: 'APP' forzada en el helper)
+      const resp = await loginRequestApp(email.trim(), password.trim());
 
-      if (error) {
-        if (error.message.includes("Invalid login credentials")) {
-          showModal("Correo o contraseña incorrectos.");
-        } else {
-          showModal(error.message);
-        }
+      if (!resp.success) {
+        // Mensaje de backend (incluye casos de credenciales inválidas o privilegios insuficientes)
+        showModal(resp.message ?? "No se pudo iniciar sesión.");
         return;
       }
+      // 👇 hidratar sesión local para que useAuth funcione
+      const at = resp.tokens?.access_token;
+      const rt = resp.tokens?.refresh_token;
 
-      const { session } = data;
-      if (!session) {
-        showModal("No se pudo iniciar sesión. Intenta nuevamente.");
-        return;
+      if (at && rt) {
+        const { data: setData, error: setErr } = await supabase.auth.setSession({
+          access_token: at,
+          refresh_token: rt,
+        });
+
+        if (setErr) {
+          console.error("setSession error:", setErr);
+          showModal("No se pudo establecer la sesión local.");
+          return;
+        }
       }
 
       // ✅ Redirigir al home
       router.replace("/(tabs)/home");
     } catch (err: any) {
-      showModal("Ocurrió un error al iniciar sesión.");
       console.error(err);
+      showModal("Ocurrió un error al iniciar sesión.");
     } finally {
       setIsLoading(false);
     }
@@ -163,7 +169,7 @@ export default function LoginPage() {
                   />
 
                   <LoginButton
-                    title="Entrar"
+                    title={isLoading ? "Entrando..." : "Entrar"}
                     onPress={handleSubmit}
                     disabled={isLoading}
                   />
@@ -173,6 +179,14 @@ export default function LoginPage() {
                       ¿Olvidaste tu contraseña?
                     </Link>
                   </View>
+
+                  {/* 👇 ENLACE A REGISTRO */}
+                  <Text style={styles.footer}>
+                    ¿No tienes cuenta?{" "}
+                    <Link href="/(auth)/register" style={styles.linkBold}>
+                      Regístrate
+                    </Link>
+                  </Text>
                 </View>
               </ScrollView>
             </View>

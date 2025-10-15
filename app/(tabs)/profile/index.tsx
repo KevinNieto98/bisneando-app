@@ -1,6 +1,7 @@
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Icono from "@/components/ui/Icon.native";
 import useAuth from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfile"; // 👈 NUEVO
 import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -24,6 +25,9 @@ export default function AccountScreen() {
   // Modal de confirmación de logout
   const [confirmVisible, setConfirmVisible] = useState(false);
 
+  // 👇 Trae el perfil desde tbl_usuarios (cuando haya user.id)
+  const { profile, loading: loadingProfile } = useProfile(user?.id);
+
   // ✅ Redirigir si no hay sesión
   useEffect(() => {
     if (!loading && !user) {
@@ -45,7 +49,6 @@ export default function AccountScreen() {
         return;
       }
 
-      // Redirigir al login
       router.replace("/(auth)/login");
     } catch (err) {
       console.error(err);
@@ -55,7 +58,7 @@ export default function AccountScreen() {
     }
   };
 
-  if (loading) {
+  if (loading || (user && loadingProfile)) {
     return (
       <View style={styles.loadingContainer}>
         <Text style={styles.loadingText}>Cargando...</Text>
@@ -64,6 +67,15 @@ export default function AccountScreen() {
   }
 
   if (!user) return null;
+
+  // 👇 Prioriza nombre de la tabla; fallback al metadata
+  const displayName =
+    [profile?.nombre, profile?.apellido].filter(Boolean).join(" ").trim() ||
+    (user.user_metadata?.name as string | undefined) ||
+    "Usuario sin nombre";
+
+  const displayEmail = profile?.email ?? user.email ?? undefined;
+  const avatarUrl = profile?.avatar_url ?? (user.user_metadata?.avatar_url as string | undefined);
 
   return (
     <>
@@ -80,52 +92,37 @@ export default function AccountScreen() {
 
           {/* Perfil */}
           <View style={styles.profileSection}>
-            {user.user_metadata?.avatar_url ? (
-              <Image source={{ uri: user.user_metadata.avatar_url }} style={styles.avatar} />
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <Ionicons name="person-circle-outline" size={80} color="#a16207" />
               </View>
             )}
 
-            <Text style={styles.userName}>
-              {user.user_metadata?.name || "Usuario sin nombre"}
-            </Text>
-
-            {user.email && <Text style={styles.emailText}>{user.email}</Text>}
+            <Text style={styles.userName}>{displayName}</Text>
+            {!!displayEmail && <Text style={styles.emailText}>{displayEmail}</Text>}
           </View>
         </View>
 
         {/* Contenido blanco */}
         <View style={styles.whiteSection}>
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => router.push("/edit_profile")}
-          >
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/edit_profile")}>
             <Ionicons name="person-outline" size={22} color="#27272a" />
             <Text style={styles.menuText}>Editar Perfil</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => router.push("/address")}
-          >
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/address")}>
             <Ionicons name="location-outline" size={22} color="#27272a" />
             <Text style={styles.menuText}>Mis direcciones</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => router.push("/orders")}
-          >
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/orders")}>
             <Icono name="Tag" size={22} color="#27272a" />
             <Text style={styles.menuText}>Mis pedidos</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => router.push("/legal_information")}
-          >
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/legal_information")}>
             <Ionicons name="document-text-outline" size={22} color="#27272a" />
             <Text style={styles.menuText}>Información legal</Text>
           </TouchableOpacity>
@@ -135,7 +132,7 @@ export default function AccountScreen() {
           {/* 🚪 Botón de cerrar sesión */}
           <TouchableOpacity
             style={[styles.logoutButton, loggingOut && { opacity: 0.6 }]}
-            onPress={() => setConfirmVisible(true)} // 👈 mostrar ConfirmModal
+            onPress={() => setConfirmVisible(true)}
             disabled={loggingOut}
           >
             <Ionicons name="log-out-outline" size={22} color="#dc2626" />
@@ -146,9 +143,7 @@ export default function AccountScreen() {
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>Versión 1.0.1</Text>
-            <Text style={styles.footerText}>
-              Powered by DDG Soluciones Digitales 2025
-            </Text>
+            <Text style={styles.footerText}>Powered by DDG Soluciones Digitales 2025</Text>
           </View>
         </View>
       </ScrollView>
@@ -173,12 +168,7 @@ export default function AccountScreen() {
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, backgroundColor: "#fff" },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#fff",
-  },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
   loadingText: { fontSize: 16, color: "#52525b" },
   yellowSection: {
     backgroundColor: "#facc15",
@@ -192,49 +182,23 @@ const styles = StyleSheet.create({
   backBtn: { flexDirection: "row", alignItems: "center" },
   backText: { color: "#1e293b", marginLeft: 6, fontWeight: "600" },
   profileSection: { alignItems: "center", marginBottom: 10 },
-  avatar: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    borderWidth: 2,
-    borderColor: "#a16207",
-  },
+  avatar: { width: 110, height: 110, borderRadius: 55, borderWidth: 2, borderColor: "#a16207" },
   avatarPlaceholder: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    backgroundColor: "#fef9c3",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#a16207",
+    width: 110, height: 110, borderRadius: 55, backgroundColor: "#fef9c3",
+    justifyContent: "center", alignItems: "center", borderWidth: 2, borderColor: "#a16207",
   },
   userName: { marginTop: 10, fontSize: 18, fontWeight: "700", color: "#1e293b" },
   emailText: { marginTop: 4, fontSize: 14, color: "#3f3f46" },
   whiteSection: { flex: 1, backgroundColor: "#fff", paddingHorizontal: 20, paddingTop: 24 },
   separator: { height: 1, backgroundColor: "#e4e4e7", marginVertical: 16 },
   menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 10,
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: "#f3f4f6", borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 10,
   },
   menuText: { fontSize: 16, color: "#27272a" },
   logoutButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#fef2f2",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#fee2e2",
-    marginTop: 8,
+    flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#fef2f2",
+    paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: "#fee2e2", marginTop: 8,
   },
   logoutText: { color: "#dc2626", fontWeight: "600", fontSize: 16 },
   footer: { marginTop: 20, alignItems: "center" },
