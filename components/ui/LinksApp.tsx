@@ -1,22 +1,43 @@
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Icono from "./Icon.native";
 
 interface LinksAppProps {
-  name: string; // nombre del icono principal
+  name: string;              // icono izquierdo
   title: string;
-  onPress: () => void;
+  onPress?: () => void;
+  disabled?: boolean;        // ← NUEVO (opcional)
+  loading?: boolean;         // ← NUEVO (opcional)
+  rightIconName?: string;    // opcional: reemplazar ChevronRight
 }
 
-export default function LinksApp({ name, title, onPress }: LinksAppProps) {
+export default function LinksApp({
+  name,
+  title,
+  onPress,
+  disabled = false,
+  loading = false,
+  rightIconName = "ChevronRight",
+}: LinksAppProps) {
+  const isBlocked = disabled || loading;
+
   return (
-    <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={[styles.menuItem, isBlocked && styles.menuItemDisabled]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      disabled={isBlocked}
+    >
       <View style={styles.leftSection}>
         <Icono name={name} size={22} color="#27272a" />
         <Text style={styles.menuText}>{title}</Text>
       </View>
 
-      <Icono name="ChevronRight" size={20} color="#52525b" />
+      {loading ? (
+        <ActivityIndicator />
+      ) : (
+        <Icono name={rightIconName} size={20} color="#52525b" />
+      )}
     </TouchableOpacity>
   );
 }
@@ -31,6 +52,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     marginBottom: 10,
+  },
+  menuItemDisabled: {
+    opacity: 0.6,
   },
   leftSection: {
     flexDirection: "row",

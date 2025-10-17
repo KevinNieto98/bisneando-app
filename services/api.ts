@@ -175,3 +175,58 @@ export async function loginRequestApp(
     };
   }
 }
+
+
+// src/lib/api.ts  (añade debajo de tus exports actuales)
+
+/** Inyecta Authorization si tienes un access token (Supabase) */
+function withAuthHeader(token?: string): Record<string, string> {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/** Generar OTP para una acción dada (p.ej. "verify_account") */
+export async function otpGenerate(
+  id_accion: string,
+  options?: {
+    ttlSeconds?: number;
+    metadata?: Record<string, any>;
+    /** solo para DEV: si true, el backend puede devolver el OTP en la respuesta si no es production */
+    returnOtpInResponse?: boolean;
+    /** access token del usuario (Supabase) */
+    token?: string;
+  }
+) {
+  const { ttlSeconds, metadata, returnOtpInResponse, token } = options ?? {};
+  return await apiFetch<{
+    ok: boolean;
+    id_event: string;
+    expires_at: string;
+    otp?: string; // solo en dev si returnOtpInResponse=true
+  }>("/api/otp/generate", {
+    method: "POST",
+    headers: {
+      ...withAuthHeader(token),
+    },
+    body: {
+      id_accion,
+      ...(ttlSeconds ? { ttlSeconds } : {}),
+      ...(metadata ? { metadata } : {}),
+      ...(returnOtpInResponse ? { returnOtpInResponse: true } : {}),
+    },
+  });
+}
+
+/** Verificar OTP */
+export async function otpVerify(
+  id_accion: string,
+  otp: string,
+  token?: string
+) {
+  return await apiFetch<{ ok: boolean; reason?: string }>("/api/otp/verify", {
+    method: "POST",
+    headers: {
+      ...withAuthHeader(token),
+    },
+    body: { id_accion, otp },
+  });
+}
