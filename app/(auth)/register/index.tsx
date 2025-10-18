@@ -3,9 +3,8 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import LoginButton from "@/components/ui/LoginButton";
 import LoginInput from "@/components/ui/LoginInput";
 import { useBackHandler } from "@/hooks/useBackHandler";
-// 👈 usa el caller actualizado
-import { supabase } from "@/lib/supabase"; // 👈 para setSession local
-import { signupRequest } from "@/services/api";
+import { otpGenerate } from "@/services/api";
+import { useSignupDraft } from "@/store/useSignupDraft";
 import { validateEmail } from "@/utils/validations";
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
@@ -22,33 +21,56 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
+// ======== Helpers de máscara/normalización ========
+const norm = (s: string) => s.normalize("NFKC").trim();
+const onlyDigits = (s: string) => s.replace(/\D+/g, "");
+
+// quita caracteres invisibles (zero-width) que rompen comparaciones
+const stripZeroWidth = (s: string) => s.replace(/[\u200B-\u200D\u2060\uFEFF]/g, "");
+
+// normaliza secretos (passwords): NFKC + sin invisibles + trim bordes
+const sanitizeSecret = (s: string) => stripZeroWidth(s.normalize("NFKC")).trim();
+
+// (+504) Honduras — muestra: "+504 9XXX XXXX"
+function formatHnPhone(input: string) {
+  let d = onlyDigits(input);
+  if (d.startsWith("504")) d = d.slice(3);
+  if (d.length > 8) d = d.slice(0, 8);
+  if (d.length === 0) return "+504 ";
+  if (d.length <= 1) return `+504 ${d}`;
+  if (d.length <= 4) return `+504 ${d[0]}${d.slice(1)}`;
+  return `+504 ${d.slice(0, 1)}${d.slice(1, 4)} ${d.slice(4)}`;
+}
+
 export default function RegisterPage() {
   const { handleBack } = useBackHandler();
   const insets = useSafeAreaInsets();
 
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const [firstName, setFirstName]   = useState("");
+  const [lastName, setLastName]     = useState("");
+  const [phone, setPhone]           = useState("");
+  const [email, setEmail]           = useState("");
+  const [password, setPassword]     = useState("");
+  const [confirm, setConfirm]       = useState("");
 
   const [isLoading, setIsLoading] = useState(false);
 
   // Modal de errores e info
   const [isModalVisible, setModalVisible] = useState(false);
-  const [modalMessage, setModalMessage] = useState("");
+  const [modalMessage, setModalMessage]   = useState("");
 
   // Confirmación
   const [confirmVisible, setConfirmVisible] = useState(false);
 
   // Errores por campo
   const [firstNameError, setFirstNameError] = useState(false);
-  const [lastNameError, setLastNameError] = useState(false);
-  const [phoneError, setPhoneError] = useState(false);
-  const [emailError, setEmailError] = useState(false);
-  const [passwordError, setPasswordError] = useState(false);
-  const [confirmError, setConfirmError] = useState(false);
+  const [lastNameError, setLastNameError]   = useState(false);
+  const [phoneError, setPhoneError]         = useState(false);
+  const [emailError, setEmailError]         = useState(false);
+  const [passwordError, setPasswordError]   = useState(false);
+  const [confirmError, setConfirmError]     = useState(false);
+
+  const { setDraft } = useSignupDraft();
 
   const showModal = (message: string) => {
     setModalMessage(message);
@@ -65,7 +87,9 @@ export default function RegisterPage() {
     setConfirmError(!confirm.trim());
   };
 
-  const handleSubmit = async () => {
+  // 🌟 Validación previa: si pasa, recién mostramos el modal
+  const precheckAndMaybeConfirm = () => {
+    // limpia flags
     setFirstNameError(false);
     setLastNameError(false);
     setPhoneError(false);
@@ -73,29 +97,82 @@ export default function RegisterPage() {
     setPasswordError(false);
     setConfirmError(false);
 
-    let hasError = false;
-    if (!firstName.trim()) { setFirstNameError(true); hasError = true; }
-    if (!lastName.trim())  { setLastNameError(true);  hasError = true; }
-    if (!phone.trim())     { setPhoneError(true);     hasError = true; }
-    if (!email.trim())     { setEmailError(true);     hasError = true; }
-    if (!password.trim())  { setPasswordError(true);  hasError = true; }
-    if (!confirm.trim())   { setConfirmError(true);   hasError = true; }
+    const first = norm(firstName);
+    const last  = norm(lastName);
+    const mail  = norm(email);
 
-    if (hasError) {
+    let telRaw = onlyDigits(phone);
+    if (telRaw.startsWith("504")) telRaw = telRaw.slice(3);
+
+    // mínimos
+    if (!first || !last || !mail || !telRaw || !password || !confirm) {
+      if (!first) setFirstNameError(true);
+      if (!last) setLastNameError(true);
+      if (!mail) setEmailError(true);
+      if (!telRaw) setPhoneError(true);
+      if (!password) setPasswordError(true);
+      if (!confirm) setConfirmError(true);
       showModal("Por favor, completa todos los campos requeridos.");
       return;
     }
 
-    const { valid, message } = validateEmail(email);
+    // teléfono
+    if (telRaw.length !== 8) {
+      setPhoneError(true);
+      showModal("El número de teléfono debe tener 8 dígitos.");
+      return;
+    }
+
+    // correo
+    const { valid, message } = validateEmail(mail);
     if (!valid) {
       setEmailError(true);
       showModal(message || "Correo inválido.");
       return;
     }
 
-    if (password !== confirm) {
+    // ⚠️ contraseñas (sanitizadas)
+    const pass = sanitizeSecret(password);
+    const conf = sanitizeSecret(confirm);
+    if (!pass || !conf) {
       setPasswordError(true);
       setConfirmError(true);
+      showModal("La contraseña no puede estar vacía.");
+      return;
+    }
+    if (pass !== conf) {
+      setPasswordError(true);
+      setConfirmError(true);
+      showModal("Las contraseñas no coinciden.");
+      return;
+    }
+
+    // Si todo ok, ahora sí mostrar confirm modal
+    setConfirmVisible(true);
+  };
+
+  // Valida (de nuevo por seguridad) -> genera OTP -> guarda draft -> navega
+  const validateAndGoToOTP = async () => {
+    // saneo definitivo (idéntico a arriba)
+    const first = norm(firstName);
+    const last  = norm(lastName);
+    const mail  = norm(email);
+    const pass  = sanitizeSecret(password);
+    const conf  = sanitizeSecret(confirm);
+
+    let telRaw = onlyDigits(phone);
+    if (telRaw.startsWith("504")) telRaw = telRaw.slice(3);
+
+    // por seguridad, recheck rápido
+    if (!first || !last || !mail || !telRaw || !pass || !conf) {
+      showModal("Por favor, revisa los campos obligatorios.");
+      return;
+    }
+    if (telRaw.length !== 8) {
+      showModal("El número de teléfono debe tener 8 dígitos.");
+      return;
+    }
+    if (pass !== conf) {
       showModal("Las contraseñas no coinciden.");
       return;
     }
@@ -103,48 +180,46 @@ export default function RegisterPage() {
     try {
       setIsLoading(true);
 
-      // Llamada a tu API /api/signup
-      const res = await signupRequest({
-        nombre: firstName.trim(),
-        apellido: lastName.trim(),
-        telefono: phone.trim(),
-        correo: email.trim(),
-        password: password.trim(),
-        id_perfil: 1, // ajusta según tu lógica
+      const otpRes = await otpGenerate("verify_account", {
+        email: mail,
+        channel: "email",
+        metadata: { telefono: telRaw, nombre: first, apellido: last },
+        returnOtpInResponse: __DEV__,
       });
 
-      if (!res.ok) {
-        showModal(res.message ?? "No se pudo crear la cuenta.");
+      if (!otpRes?.ok) {
+        showModal("No se pudo generar el OTP. Intenta nuevamente.");
         return;
       }
 
-      if (res.status === "created") {
-        // Hidratar sesión local para que useAuth funcione
-        const at = res.tokens?.access_token;
-        const rt = res.tokens?.refresh_token;
-
-        if (at && rt) {
-          const { error: setErr } = await supabase.auth.setSession({
-            access_token: at,
-            refresh_token: rt,
-          });
-
-          if (setErr) {
-            console.error("setSession error:", setErr);
-            showModal("Cuenta creada, pero no se pudo establecer la sesión local.");
-            return;
-          }
-        }
-
-        router.replace("/(tabs)/home?welcome=1");
+      const eventId = otpRes.id_event;
+      const expiresAt = otpRes.expires_at;
+      if (!eventId) {
+        showModal("No se recibió el identificador del evento OTP.");
         return;
       }
 
-      // pending_confirmation
-      showModal("Registro creado. Revisa tu correo para verificar tu cuenta.");
+      // draft con TEL RAW
+      setDraft({
+        nombre: first,
+        apellido: last,
+        telefono: telRaw,
+        correo: mail,
+        password: pass,
+      });
+
+      router.push({
+        pathname: "/(auth)/confirm-otp",
+        params: {
+          eventId,
+          expiresAt,
+          email: mail,
+          ...(otpRes.otp ? { otpPreview: otpRes.otp } : {}),
+        },
+      });
     } catch (err) {
       console.error(err);
-      showModal("Ocurrió un error al registrarte. Intenta nuevamente.");
+      showModal("Ocurrió un error al solicitar el OTP. Intenta nuevamente.");
     } finally {
       setIsLoading(false);
     }
@@ -182,27 +257,88 @@ export default function RegisterPage() {
                 showsVerticalScrollIndicator={false}
               >
                 <View style={{ gap: 14 }}>
-                  <LoginInput label="Nombre" type="text" value={firstName} onChange={setFirstName}
-                    required showError={firstNameError} onTyping={() => setFirstNameError(false)} placeholder="Tu nombre" />
+                  <LoginInput
+                    label="Nombre"
+                    type="text"
+                    value={firstName}
+                    onChange={setFirstName}
+                    required
+                    showError={firstNameError}
+                    onTyping={() => setFirstNameError(false)}
+                    placeholder="Tu nombre"
+                  />
 
-                  <LoginInput label="Apellido" type="text" value={lastName} onChange={setLastName}
-                    required showError={lastNameError} onTyping={() => setLastNameError(false)} placeholder="Tu apellido" />
+                  <LoginInput
+                    label="Apellido"
+                    type="text"
+                    value={lastName}
+                    onChange={setLastName}
+                    required
+                    showError={lastNameError}
+                    onTyping={() => setLastNameError(false)}
+                    placeholder="Tu apellido"
+                  />
 
-                  <LoginInput label="Número de Teléfono" type="phone" value={phone} onChange={setPhone}
-                    required showError={phoneError} onTyping={() => setPhoneError(false)} placeholder="+504 9XXXXXXX" />
+                  <LoginInput
+                    label="Número de Teléfono"
+                    type="phone"
+                    value={phone}
+                    onChange={(t) => {
+                      setPhone(formatHnPhone(t));
+                      setPhoneError(false);
+                    }}
+                    required
+                    showError={phoneError}
+                    onTyping={() => setPhoneError(false)}
+                    keyboardType="phone-pad"
+                    textContentType="telephoneNumber"
+                    placeholder="+504 9XXX XXXX"
+                  />
 
-                  <LoginInput label="Correo" type="email" value={email} onChange={setEmail}
-                    required showError={emailError} onTyping={() => setEmailError(false)} placeholder="correo@ejemplo.com" />
+                  <LoginInput
+                    label="Correo"
+                    type="email"
+                    value={email}
+                    onChange={setEmail}
+                    required
+                    showError={emailError}
+                    onTyping={() => setEmailError(false)}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder="correo@ejemplo.com"
+                  />
 
-                  <LoginInput label="Contraseña" type="password" value={password} onChange={setPassword}
-                    required showError={passwordError} onTyping={() => setPasswordError(false)} placeholder="••••••••" />
+                  <LoginInput
+                    label="Contraseña"
+                    type="password"
+                    value={password}
+                    onChange={setPassword}
+                    required
+                    showError={passwordError}
+                    onTyping={() => setPasswordError(false)}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    secureTextEntry
+                    placeholder="••••••••"
+                  />
 
-                  <LoginInput label="Confirmar Contraseña" type="password" value={confirm} onChange={setConfirm}
-                    required showError={confirmError} onTyping={() => setConfirmError(false)} placeholder="••••••••" />
+                  <LoginInput
+                    label="Confirmar Contraseña"
+                    type="password"
+                    value={confirm}
+                    onChange={setConfirm}
+                    required
+                    showError={confirmError}
+                    onTyping={() => setConfirmError(false)}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    secureTextEntry
+                    placeholder="••••••••"
+                  />
 
                   <LoginButton
-                    title={isLoading ? "Creando cuenta..." : "Registrarse"}
-                    onPress={() => setConfirmVisible(true)}
+                    title={isLoading ? "Solicitando OTP..." : "Registrarse"}
+                    onPress={precheckAndMaybeConfirm} // 👈 primero valida, luego muestra modal
                     disabled={isLoading}
                   />
 
@@ -218,16 +354,21 @@ export default function RegisterPage() {
       </KeyboardAvoidingView>
 
       {/* Modales */}
-      <AlertModal visible={isModalVisible} title="Aviso" message={modalMessage} onClose={handleModalClose} />
+      <AlertModal
+        visible={isModalVisible}
+        title="Aviso"
+        message={modalMessage}
+        onClose={handleModalClose}
+      />
 
       <ConfirmModal
         visible={confirmVisible}
         title="Confirmación"
-        message="¿Estás seguro que deseas crear una cuenta?"
+        message="¿Deseas solicitar el código OTP y continuar?"
         icon="help-circle"
-        confirmText="Sí, crear"
+        confirmText="Sí, continuar"
         cancelText="Cancelar"
-        onConfirm={() => { setConfirmVisible(false); handleSubmit(); }}
+        onConfirm={() => { setConfirmVisible(false); validateAndGoToOTP(); }}
         onCancel={() => setConfirmVisible(false)}
       />
     </View>
