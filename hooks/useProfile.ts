@@ -11,6 +11,8 @@ export type AppProfile = {
   id_perfil: number | null;
   avatar_url?: string | null;
   updated_at?: string | null;
+  dni?: string | null;
+  phone_verified?: boolean | null;
 };
 
 export function useProfile(userId?: string) {
@@ -28,15 +30,13 @@ export function useProfile(userId?: string) {
 
     // 👇 Loguea sesión para confirmar hidratación
     const sessionSnap = await supabase.auth.getSession();
-    console.log("[useProfile] session?", !!sessionSnap.data.session, sessionSnap.data.session?.user?.id);
 
     const { data, error, status } = await supabase
       .from("tbl_usuarios")
-      .select("id, nombre, apellido, email, phone, id_perfil, updated_at")
+      .select("id, nombre, apellido, email, phone, id_perfil, updated_at,dni, phone_verified")
       .eq("id", userId)
       .maybeSingle(); // 👈 NO lanza error si no hay fila; data = null
 
-    console.log("[useProfile] status:", status, "error:", error?.message, "data:", data);
 
     if (error) {
       setError(error.message);

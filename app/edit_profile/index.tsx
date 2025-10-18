@@ -1,147 +1,209 @@
-// ProfileScreen.tsx
+// screens/ProfileScreen.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import React, { useState } from "react";
-import {
-  ActivityIndicator,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import Modal from "react-native-modal";
+import { router } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import FloatingInput from "@/components/ui/FloatingInput";
+import AlertModal from "@/components/ui/AlertModal";
 import Icono from "@/components/ui/Icon.native";
 import LinksApp from "@/components/ui/LinksApp";
 import TitleForm from "@/components/ui/TitleForm";
+import useAuth from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfile";
+import { supabase } from "@/lib/supabase";
+import { actualizarUsuarioActual, otpGenerate, otpVerify } from "@/services/api"; // OTP aquí
 
-// 👇 Asegúrate que esta ruta apunte AL ARCHIVO que exporta `default AlertModal`
-import AlertModal from "@/components/ui/AlertModal";
-import { supabase } from "@/lib/supabase"; // ajusta si tu ruta es distinta
-import { otpGenerate, otpVerify } from "@/services/api";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import DNIMaskedInput, { isValidDNI } from "./components/DNIMaskedInput";
+import NameRow from "./components/NameRow";
+import OtpModal from "./components/OtpModal";
+import PhoneField from "./components/PhoneField";
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
+  const { user, loading } = useAuth();
+  const { profile, loading: loadingProfile } = useProfile(user?.id);
 
-  // ---- Alert modal state ----
+  // Alerts (solo para errores/infos locales)
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertTitle, setAlertTitle] = useState("");
   const [alertMessage, setAlertMessage] = useState("");
-  const [alertIcon, setAlertIcon] =
-    useState<keyof typeof Ionicons.glyphMap>("alert-circle");
-
-  const showAlert = (
-    title: string,
-    message: string,
-    icon: keyof typeof Ionicons.glyphMap = "alert-circle"
-  ) => {
-    setAlertTitle(title);
-    setAlertMessage(message);
-    setAlertIcon(icon);
-    setAlertVisible(true);
+  const [alertIcon, setAlertIcon] = useState<keyof typeof Ionicons.glyphMap>("alert-circle");
+  const showAlert = (title: string, message: string, icon: keyof typeof Ionicons.glyphMap = "alert-circle") => {
+    setAlertTitle(title); setAlertMessage(message); setAlertIcon(icon); setAlertVisible(true);
   };
 
-  // ---- OTP modal state ----
+  // OTP UI
   const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [loadingGenerate, setLoadingGenerate] = useState(false);
   const [loadingVerify, setLoadingVerify] = useState(false);
 
-  // Generar OTP
+  // Confirmación Guardar
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [saving, setSaving] = useState(false); // evita múltiples submit
+
+  // Form state (editables)
+  const [nombre, setNombre] = useState("");
+  const [apellido, setApellido] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [email, setEmail] = useState("");
+  const [phoneVerified, setPhoneVerified] = useState<boolean>(false);
+
+  // DNI (masked y raw)
+  const [dniMasked, setDniMasked] = useState<string>("");
+  const [dniRaw, setDniRaw] = useState<string>("");
+
+  // Snapshot inicial para detectar cambios
+  const [initial, setInitial] = useState({
+    nombre: "",
+    apellido: "",
+    telefono: "",
+    dniRaw: "",
+  });
+
+  // Cargar perfil
+  useEffect(() => {
+    if (profile) {
+      const pNombre = profile?.nombre ?? "";
+      const pApellido = profile?.apellido ?? "";
+      const pTelefono = profile?.phone ?? "";
+      const pEmail = profile?.email ?? user?.email ?? "";
+      const pPhoneVerified = profile?.phone_verified ?? false;
+      const pDniRaw = (profile?.dni ?? "").replace(/\D/g, "").slice(0, 13);
+
+      setNombre(pNombre);
+      setApellido(pApellido);
+      setTelefono(pTelefono);
+      setEmail(pEmail);
+      setPhoneVerified(pPhoneVerified);
+
+      setDniMasked(profile?.dni ?? "");
+      setDniRaw(pDniRaw);
+
+      setInitial({
+        nombre: pNombre,
+        apellido: pApellido,
+        telefono: pTelefono,
+        dniRaw: pDniRaw,
+      });
+    }
+  }, [profile, user?.email]);
+
+  // Redirigir si no hay sesión
+  useEffect(() => {
+    if (!loading && !user) navigation.navigate("Login" as never);
+  }, [loading, user, navigation]);
+
+  // ¿Hay cambios?
+  const isDirty = useMemo(() => {
+    const n = (s: string) => (s ?? "").trim();
+    return (
+      n(nombre)   !== n(initial.nombre)   ||
+      n(apellido) !== n(initial.apellido) ||
+      n(telefono) !== n(initial.telefono) ||
+      (dniRaw ?? "") !== (initial.dniRaw ?? "")
+    );
+  }, [nombre, apellido, telefono, dniRaw, initial]);
+
+  // Generar OTP (email)
   const handleVerifyAccount = async () => {
-    if (loadingGenerate) return; // auto-bloqueo sin usar disabled
+    if (loadingGenerate) return;
     try {
       setLoadingGenerate(true);
-
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token ?? null;
-      if (!token) {
-        showAlert(
-          "Sesión requerida",
-          "Inicia sesión para verificar tu cuenta.",
-          "lock-closed"
-        );
-        return;
-      }
+      if (!token) { showAlert("Sesión requerida", "Inicia sesión para verificar tu cuenta.", "lock-closed"); return; }
+      if (!email) { showAlert("Correo no disponible", "No se encontró tu correo electrónico.", "mail"); return; }
 
-      const res = await otpGenerate("verify_account", {
-        ttlSeconds: 300,
-        returnOtpInResponse: __DEV__,
-        token,
-      });
-
-      if (__DEV__ && res?.otp) {
-        showAlert("OTP de desarrollo", `Código: ${res.otp}`, "construct");
-      } else {
-        showAlert(
-          "Código enviado",
-          "Revisa tu email o SMS para el código.",
-          "mail"
-        );
-      }
-
-      setOtpCode("");
-      setOtpModalVisible(true);
+      const res = await otpGenerate("verify_account", { email, ttlSeconds: 300, returnOtpInResponse: __DEV__, token });
+      if (__DEV__ && res?.otp) showAlert("OTP de desarrollo", `Código: ${res.otp}`, "construct");
+      else showAlert("Código enviado", "Revisa tu correo electrónico para el código.", "mail");
+      setOtpCode(""); setOtpModalVisible(true);
     } catch (e: any) {
-      showAlert(
-        "No se pudo generar el código",
-        e?.message ?? "Intenta de nuevo.",
-        "warning"
-      );
-    } finally {
-      setLoadingGenerate(false);
-    }
+      showAlert("No se pudo generar el código", e?.message ?? "Intenta de nuevo.", "warning");
+    } finally { setLoadingGenerate(false); }
   };
 
-  // Verificar OTP
+  // Verificar OTP (email)
   const handleSubmitOtp = async () => {
-    if (!otpCode || otpCode.length < 4) {
-      showAlert(
-        "Código incompleto",
-        "Ingresa tu código de verificación.",
-        "alert-circle"
-      );
-      return;
-    }
+    if (!otpCode || otpCode.length < 4) { showAlert("Código incompleto", "Ingresa tu código de verificación."); return; }
     try {
       setLoadingVerify(true);
-
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token ?? null;
-      if (!token) {
-        showAlert(
-          "Sesión requerida",
-          "Inicia sesión para verificar tu cuenta.",
-          "lock-closed"
-        );
-        return;
-      }
-
+      if (!token) { showAlert("Sesión requerida", "Inicia sesión para verificar tu cuenta."); return; }
       const res = await otpVerify("verify_account", otpCode, token);
-      if (res.ok) {
-        setOtpModalVisible(false);
-        showAlert(
-          "¡Cuenta verificada!",
-          "Tu verificación se completó con éxito.",
-          "checkmark-circle"
-        );
-      } else {
-        showAlert(
-          "Código inválido",
-          res?.reason ?? "Verifica tu código e intenta nuevamente.",
-          "close-circle"
-        );
-      }
+      if (res.ok) { setOtpModalVisible(false); showAlert("¡Cuenta verificada!", "Tu verificación se completó con éxito.", "checkmark-circle"); }
+      else showAlert("Código inválido", res?.reason ?? "Verifica tu código e intenta nuevamente.", "close-circle");
     } catch (e: any) {
       showAlert("Error al verificar", e?.message ?? "Intenta de nuevo.", "warning");
+    } finally { setLoadingVerify(false); }
+  };
+
+  // Guardar cambios usando /api/usuarios/actualizar (PUT + id)
+  const handleSave = async () => {
+    if (!user || saving) return;
+
+    // Validación DNI si lo llenaron
+    if (dniMasked && !isValidDNI(dniMasked)) {
+      showAlert("DNI inválido", "Debe tener 13 dígitos en formato 0000-0000-00000", "alert-circle");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token ?? undefined;
+
+      const payload = {
+        id: user.id, // ⬅️ requerido por tu API
+        nombre,
+        apellido,
+        telefono,
+        dni: dniRaw.length ? dniRaw : null,
+      };
+
+      const res = await actualizarUsuarioActual(payload, token);
+      if (!res.ok) throw new Error(res.message ?? "No se pudo actualizar el usuario.");
+
+      // Actualizar snapshot local (para ocultar botón Guardar)
+      setInitial({
+        nombre: (nombre ?? "").trim(),
+        apellido: (apellido ?? "").trim(),
+        telefono: (telefono ?? "").trim(),
+        dniRaw: dniRaw ?? "",
+      });
+
+      router.replace("/(tabs)/profile?success=1");
+    } catch (e: any) {
+      const detail = e?.message || "No se pudo actualizar.";
+      showAlert("Error al guardar", detail, "warning");
     } finally {
-      setLoadingVerify(false);
+      setSaving(false);
     }
   };
+
+  // Acción botón teléfono
+  const handlePhoneAction = () => {
+    if (phoneVerified) {
+      showAlert("Editar teléfono", "Aquí podrías permitir editar el número.");
+    } else {
+      showAlert("Verificación", "Aquí puedes iniciar el proceso de verificación del teléfono.");
+    }
+  };
+
+  if (loading || loadingProfile) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#facc15" />
+        <Text style={styles.loadingText}>Cargando perfil...</Text>
+      </View>
+    );
+  }
+  if (!user) return null;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -164,111 +226,89 @@ export default function ProfileScreen() {
         <View style={styles.userRow}>
           <View style={styles.avatarContainer}>
             <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>JD</Text>
+              <Text style={styles.avatarText}>{nombre ? nombre.charAt(0).toUpperCase() : "U"}</Text>
             </View>
           </View>
-
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>Juan Díaz</Text>
-            <Text style={styles.userEmail}>juan.diaz@example.com</Text>
+            <Text style={styles.userName}>{`${nombre} ${apellido}`.trim() || "Usuario sin nombre"}</Text>
+            <Text style={styles.userEmail}>{email}</Text>
           </View>
         </View>
 
-        {/* Formulario */}
         <TitleForm text="Editar Perfil" size="md" />
-        <FloatingInput label="Nombre" value="Juan Díaz" />
-        <FloatingInput label="Telefono" value="+(504) 9201-1070" />
-        <FloatingInput label="Correo Electrónico" value="nieto.lei@prueba.com" disabled />
 
-        <TitleForm text="Seguridad" size="md" />
-        <LinksApp name="KeyRound" title="Cambiar Contraseña" onPress={() => {}} />
+        <NameRow nombre={nombre} apellido={apellido} onChangeNombre={setNombre} onChangeApellido={setApellido} />
 
-        <LinksApp
-          name="Verified"
-          title={loadingGenerate ? "Generando código..." : "Verificar Cuenta"}
-          // sin prop `disabled`; bloqueamos lógicamente
-          onPress={() => {
-            if (!loadingGenerate) handleVerifyAccount();
-          }}
+        <PhoneField telefono={telefono} onChangeTelefono={setTelefono} phoneVerified={phoneVerified} onPressAction={handlePhoneAction} />
+
+        {/* DNI con máscara */}
+        <DNIMaskedInput
+          value={dniMasked}
+          onChangeMasked={setDniMasked}
+          onChangeRaw={setDniRaw}
+          required={false}
+          showHint
         />
 
-        {/* Botones mitad y mitad */}
-        <View style={styles.buttonsRow}>
-          <View style={styles.buttonWrapper}>
-            <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={() => {}}
-              activeOpacity={0.8}
-            >
-              <Icono name="Trash" size={20} color="#dc2626" />
-              <Text style={styles.deleteText}>Eliminar</Text>
-            </TouchableOpacity>
-          </View>
+        <TitleForm text="Seguridad" size="md" />
 
-          <View style={styles.buttonWrapper}>
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={() => {}}
-              activeOpacity={0.8}
-            >
-              <Icono name="Check" size={20} color="#fff" />
-              <Text style={styles.saveText}>Guardar</Text>
-            </TouchableOpacity>
+        {/* Fila: Cambiar contraseña + Eliminar (pequeño) */}
+        <View style={styles.inlineActionsRow}>
+          <TouchableOpacity
+            style={styles.deleteSmall}
+            onPress={() => {
+              showAlert("Acción restringida", "La eliminación de clientes está deshabilitada.", "information-circle");
+            }}
+            activeOpacity={0.85}
+          >
+            <Icono name="Trash" size={16} color="#dc2626" />
+            <Text style={styles.deleteSmallText}>Eliminar</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <LinksApp name="KeyRound" title="Cambiar Contraseña" onPress={() => {}} />
           </View>
         </View>
+
+        {/* Botón Guardar SOLO si hay cambios */}
+        {isDirty && (
+          <TouchableOpacity
+            style={[styles.saveButton, saving && { opacity: 0.7 }]}
+            onPress={() => !saving && setConfirmVisible(true)}
+            activeOpacity={0.9}
+            disabled={saving}
+          >
+            {saving ? <ActivityIndicator color="#fff" /> : <Icono name="Check" size={20} color="#fff" />}
+            <Text style={styles.saveText}>{saving ? "Guardando..." : "Guardar"}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Modal OTP */}
-      <Modal
-        isVisible={otpModalVisible}
-        onBackdropPress={() => setOtpModalVisible(false)}
-        onBackButtonPress={() => setOtpModalVisible(false)}
-        backdropOpacity={0.35}
-        animationIn="zoomIn"
-        animationOut="zoomOut"
-      >
-        <View style={styles.otpModal}>
-          <Ionicons name="key" size={48} color="#eab308" />
-          <Text style={styles.otpTitle}>Ingresa tu código</Text>
-          <Text style={styles.otpSubtitle}>Te enviamos un código de 6 dígitos.</Text>
+      <OtpModal
+        visible={otpModalVisible}
+        otpCode={otpCode}
+        setOtpCode={setOtpCode}
+        loadingVerify={loadingVerify}
+        onClose={() => setOtpModalVisible(false)}
+        onSubmit={handleSubmitOtp}
+      />
 
-          <TextInput
-            style={styles.otpInput}
-            placeholder="••••••"
-            placeholderTextColor="#9ca3af"
-            keyboardType="number-pad"
-            maxLength={6}
-            value={otpCode}
-            onChangeText={setOtpCode}
-            secureTextEntry={false}
-            textAlign="center"
-          />
+      {/* Confirmación Guardar */}
+      <ConfirmModal
+        visible={confirmVisible}
+        title="Guardar cambios"
+        message="¿Deseas guardar los cambios de tu perfil?"
+        icon="save-outline"
+        confirmText="Guardar"
+        cancelText="Cancelar"
+        onCancel={() => setConfirmVisible(false)}
+        onConfirm={() => {
+          setConfirmVisible(false);
+          handleSave();
+        }}
+      />
 
-          <View style={styles.otpActions}>
-            <TouchableOpacity
-              style={[styles.otpButton, styles.otpCancel]}
-              onPress={() => setOtpModalVisible(false)}
-              disabled={loadingVerify}
-            >
-              <Text style={styles.otpCancelText}>Cancelar</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.otpButton, styles.otpConfirm]}
-              onPress={handleSubmitOtp}
-              disabled={loadingVerify}
-            >
-              {loadingVerify ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.otpConfirmText}>Verificar</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* AlertModal */}
+      {/* AlertModal (errores/info) */}
       <AlertModal
         visible={alertVisible}
         title={alertTitle}
@@ -282,6 +322,9 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFD600" },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingText: { marginTop: 8, color: "#4b5563" },
+
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -290,6 +333,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   backButton: { padding: 6, borderRadius: 20 },
+
   content: {
     flex: 1,
     backgroundColor: "#fff",
@@ -297,41 +341,39 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
   },
+
   userRow: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
   avatarContainer: { marginRight: 16 },
   avatarCircle: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "#facc15",
-    justifyContent: "center",
-    alignItems: "center",
+    width: 70, height: 70, borderRadius: 35,
+    backgroundColor: "#facc15", justifyContent: "center", alignItems: "center",
   },
   avatarText: { color: "#fff", fontSize: 26, fontWeight: "bold" },
   userInfo: { flexDirection: "column" },
   userName: { fontSize: 18, fontWeight: "bold", color: "#1e293b" },
   userEmail: { fontSize: 14, color: "#52525b", marginTop: 4 },
 
-  buttonsRow: {
+  inlineActionsRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 20,
+    alignItems: "flex-start",
     gap: 10,
+    marginTop: 8,
+    marginBottom: 10,
   },
-  buttonWrapper: { flex: 1 },
-  deleteButton: {
-    width: "100%",
-    height: 45,
-    backgroundColor: "#fef2f2",
+  deleteSmall: {
+    height: 46,
+    paddingHorizontal: 12,
+    borderRadius: 40,
     borderWidth: 1,
     borderColor: "#fee2e2",
-    borderRadius: 12,
+    backgroundColor: "#fef2f2",
     flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+    gap: 6,
   },
-  deleteText: { color: "#dc2626", fontWeight: "600", fontSize: 15 },
+  deleteSmallText: { color: "#dc2626", fontWeight: "600", fontSize: 13 },
+
   saveButton: {
     width: "100%",
     height: 45,
@@ -341,55 +383,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 8,
-  },
-  saveText: { color: "#fff", fontWeight: "600", fontSize: 15 },
-
-  otpModal: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    padding: 24,
-    alignItems: "center",
-  },
-  otpTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#1f2937",
     marginTop: 10,
   },
-  otpSubtitle: {
-    textAlign: "center",
-    color: "#4b5563",
-    fontSize: 14,
-    marginTop: 6,
-    marginBottom: 14,
-  },
-  otpInput: {
-    width: "65%",
-    height: 52,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    fontSize: 22,
-    letterSpacing: 6,
-    color: "#111827",
-    paddingHorizontal: 12,
-    marginBottom: 16,
-  },
-  otpActions: {
-    flexDirection: "row",
-    gap: 12,
-    width: "100%",
-    marginTop: 6,
-  },
-  otpButton: {
-    flex: 1,
-    height: 44,
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  otpCancel: { backgroundColor: "#f3f4f6" },
-  otpCancelText: { color: "#111827", fontWeight: "700" },
-  otpConfirm: { backgroundColor: "#22c55e" },
-  otpConfirmText: { color: "white", fontWeight: "700" },
+  saveText: { color: "#fff", fontWeight: "600", fontSize: 15 },
 });

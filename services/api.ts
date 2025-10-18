@@ -1,7 +1,6 @@
 // src/lib/api.ts
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? ""; // p.ej. https://tu-dominio.com
 
-
 // --------- Helper genérico ---------------------------------------------
 type ApiOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -22,7 +21,8 @@ async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<T> {
   const id = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
+    const url = `${API_BASE}${path}`;
+    const res = await fetch(url, {
       method,
       headers: {
         "Content-Type": "application/json",
@@ -32,24 +32,32 @@ async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<T> {
       signal: controller.signal,
     });
 
-    // intentar parsear JSON siempre que sea posible
+    // intenta json -> si falla, usa texto
+    const raw = await res.text();
     let data: any = null;
-    try {
-      data = await res.json();
-    } catch {
-      // si no hay cuerpo JSON, data se queda en null
-    }
+    try { data = raw ? JSON.parse(raw) : null; } catch { /* raw no era JSON */ }
 
     if (!res.ok) {
       const msg =
         (data && (data.message || data.error)) ||
-        `Error HTTP ${res.status} ${res.statusText}`;
-      throw new Error(msg);
+        raw || // muestra el texto del error si no hay JSON
+        `HTTP ${res.status} ${res.statusText}`;
+
+      const err = new Error(
+        `[API ERROR] ${method} ${url} -> ${res.status} ${res.statusText}\n` +
+        `Respuesta: ${msg}`
+      ) as any;
+      err.status = res.status;
+      err.statusText = res.statusText;
+      err.url = url;
+      err.method = method;
+      err.body = data ?? raw;
+      throw err;
     }
 
-    return data as T;
-  } catch (err: any) {
-    if (err?.name === "AbortError") {
+    return (data ?? ({} as any)) as T;
+  } catch (err) {
+    if ((err as any)?.name === "AbortError") {
       throw new Error("Tiempo de espera agotado al contactar la API.");
     }
     throw err;
@@ -176,18 +184,21 @@ export async function loginRequestApp(
   }
 }
 
-
-// src/lib/api.ts  (añade debajo de tus exports actuales)
-
-/** Inyecta Authorization si tienes un access token (Supabase) */
+// --------- Utilidad: Header de Autorización ----------------------------
 function withAuthHeader(token?: string): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// --------- OTP: Generar -----------------------------------------------
 /** Generar OTP para una acción dada (p.ej. "verify_account") */
 export async function otpGenerate(
   id_accion: string,
   options?: {
+    /** dirección de correo a la que se enviará el OTP (si aplica) */
+    email?: string; // opcional para evitar romper llamadas antiguas
+    /** canal de envío del OTP */
+    channel?: "email" | "sms";
+    /** tiempo de vida en segundos */
     ttlSeconds?: number;
     metadata?: Record<string, any>;
     /** solo para DEV: si true, el backend puede devolver el OTP en la respuesta si no es production */
@@ -196,7 +207,8 @@ export async function otpGenerate(
     token?: string;
   }
 ) {
-  const { ttlSeconds, metadata, returnOtpInResponse, token } = options ?? {};
+  const { email, channel = "email", ttlSeconds, metadata, returnOtpInResponse, token } = options ?? {};
+
   return await apiFetch<{
     ok: boolean;
     id_event: string;
@@ -209,6 +221,8 @@ export async function otpGenerate(
     },
     body: {
       id_accion,
+      ...(email ? { email } : {}),
+      ...(channel ? { channel } : {}),
       ...(ttlSeconds ? { ttlSeconds } : {}),
       ...(metadata ? { metadata } : {}),
       ...(returnOtpInResponse ? { returnOtpInResponse: true } : {}),
@@ -216,17 +230,66 @@ export async function otpGenerate(
   });
 }
 
-/** Verificar OTP */
+// --------- OTP: Verificar ---------------------------------------------
+/**
+ * Verificar OTP
+ * - Uso compatible con tu firma anterior:
+ *    otpVerify("verify_account", "123456", token)
+ * - Uso extendido (email opcional):
+ *    otpVerify("verify_account", "123456", { email, token })
+ */
 export async function otpVerify(
   id_accion: string,
   otp: string,
-  token?: string
+  third?: string | { email?: string; token?: string }
 ) {
+  const token = typeof third === "string" ? third : third?.token;
+  const email = typeof third === "object" ? third?.email : undefined;
+
   return await apiFetch<{ ok: boolean; reason?: string }>("/api/otp/verify", {
     method: "POST",
     headers: {
       ...withAuthHeader(token),
     },
-    body: { id_accion, otp },
+    body: {
+      id_accion,
+      otp,
+      ...(email ? { email } : {}),
+    },
   });
+}
+// --------- Usuarios: actualizar perfil actual (PUT + id) ----------------
+export type UpdateUsuarioPayload = {
+  id: string;               // ⬅️ requerido por tu API
+  nombre?: string;
+  apellido?: string;
+  telefono?: string;
+  dni?: string | null;      // dígitos o null
+  email?: string;
+  avatar_url?: string | null;
+  phone_verified?: boolean;
+};
+
+export type UpdateUsuarioResult =
+  | { ok: true; message?: string }
+  | { ok: false; message: string };
+
+export async function actualizarUsuarioActual(
+  payload: UpdateUsuarioPayload,
+  token?: string
+): Promise<UpdateUsuarioResult> {
+  try {
+    const res = await apiFetch<UpdateUsuarioResult>("/api/usuarios/actualizar", {
+      method: "PUT",                   // ⬅️ TU API EXPORTA PUT
+      headers: {
+        ...withAuthHeader(token),
+      },
+      body: payload,                   // ⬅️ incluye { id, ... }
+    });
+    // Normaliza por si el backend no manda ok explícito
+    if (res?.ok === true) return res;
+    return { ok: true, message: res?.message ?? "Actualizado." };
+  } catch (error: any) {
+    return { ok: false, message: error?.message ?? "No se pudo actualizar el usuario." };
+  }
 }
