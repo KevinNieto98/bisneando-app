@@ -3,7 +3,7 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import LoginButton from "@/components/ui/LoginButton";
 import LoginInput from "@/components/ui/LoginInput";
 import { useBackHandler } from "@/hooks/useBackHandler";
-import { otpGenerate } from "@/services/api";
+import { otpGenerate } from "@/services/api"; // Asegúrate que tu otpGenerate ya soporte replaceActive
 import { useSignupDraft } from "@/store/useSignupDraft";
 import { validateEmail } from "@/utils/validations";
 import { Ionicons } from "@expo/vector-icons";
@@ -21,14 +21,10 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-// ======== Helpers de máscara/normalización ========
+// ======== Helpers ========
 const norm = (s: string) => s.normalize("NFKC").trim();
 const onlyDigits = (s: string) => s.replace(/\D+/g, "");
-
-// quita caracteres invisibles (zero-width) que rompen comparaciones
 const stripZeroWidth = (s: string) => s.replace(/[\u200B-\u200D\u2060\uFEFF]/g, "");
-
-// normaliza secretos (passwords): NFKC + sin invisibles + trim bordes
 const sanitizeSecret = (s: string) => stripZeroWidth(s.normalize("NFKC")).trim();
 
 // (+504) Honduras — muestra: "+504 9XXX XXXX"
@@ -55,7 +51,7 @@ export default function RegisterPage() {
 
   const [isLoading, setIsLoading] = useState(false);
 
-  // Modal de errores e info
+  // Modal
   const [isModalVisible, setModalVisible] = useState(false);
   const [modalMessage, setModalMessage]   = useState("");
 
@@ -70,7 +66,11 @@ export default function RegisterPage() {
   const [passwordError, setPasswordError]   = useState(false);
   const [confirmError, setConfirmError]     = useState(false);
 
-  const { setDraft } = useSignupDraft();
+  // ✅ Términos y condiciones
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptTermsError, setAcceptTermsError] = useState(false);
+
+  const { setDraft, draft } = useSignupDraft(); // 👈 traemos draft por si ya hay OTP guardado
 
   const showModal = (message: string) => {
     setModalMessage(message);
@@ -85,17 +85,18 @@ export default function RegisterPage() {
     setEmailError(!email.trim());
     setPasswordError(!password.trim());
     setConfirmError(!confirm.trim());
+    setAcceptTermsError(!acceptTerms);
   };
 
   // 🌟 Validación previa: si pasa, recién mostramos el modal
   const precheckAndMaybeConfirm = () => {
-    // limpia flags
     setFirstNameError(false);
     setLastNameError(false);
     setPhoneError(false);
     setEmailError(false);
     setPasswordError(false);
     setConfirmError(false);
+    setAcceptTermsError(false);
 
     const first = norm(firstName);
     const last  = norm(lastName);
@@ -104,7 +105,6 @@ export default function RegisterPage() {
     let telRaw = onlyDigits(phone);
     if (telRaw.startsWith("504")) telRaw = telRaw.slice(3);
 
-    // mínimos
     if (!first || !last || !mail || !telRaw || !password || !confirm) {
       if (!first) setFirstNameError(true);
       if (!last) setLastNameError(true);
@@ -116,14 +116,12 @@ export default function RegisterPage() {
       return;
     }
 
-    // teléfono
     if (telRaw.length !== 8) {
       setPhoneError(true);
       showModal("El número de teléfono debe tener 8 dígitos.");
       return;
     }
 
-    // correo
     const { valid, message } = validateEmail(mail);
     if (!valid) {
       setEmailError(true);
@@ -131,7 +129,6 @@ export default function RegisterPage() {
       return;
     }
 
-    // ⚠️ contraseñas (sanitizadas)
     const pass = sanitizeSecret(password);
     const conf = sanitizeSecret(confirm);
     if (!pass || !conf) {
@@ -147,25 +144,28 @@ export default function RegisterPage() {
       return;
     }
 
-    // Si todo ok, ahora sí mostrar confirm modal
+    if (!acceptTerms) {
+      setAcceptTermsError(true);
+      showModal("Debes aceptar los términos y condiciones para continuar.");
+      return;
+    }
+
     setConfirmVisible(true);
   };
 
-  // Valida (de nuevo por seguridad) -> genera OTP -> guarda draft -> navega
+  // Valida -> (re)usa OTP activo o genera -> guarda draft -> navega
   const validateAndGoToOTP = async () => {
-    // saneo definitivo (idéntico a arriba)
     const first = norm(firstName);
     const last  = norm(lastName);
-    const mail  = norm(email);
+    const mail  = norm(email).toLowerCase(); // 👈 normaliza a lc
     const pass  = sanitizeSecret(password);
     const conf  = sanitizeSecret(confirm);
 
     let telRaw = onlyDigits(phone);
     if (telRaw.startsWith("504")) telRaw = telRaw.slice(3);
 
-    // por seguridad, recheck rápido
-    if (!first || !last || !mail || !telRaw || !pass || !conf) {
-      showModal("Por favor, revisa los campos obligatorios.");
+    if (!first || !last || !mail || !telRaw || !pass || !conf || !acceptTerms) {
+      showModal("Por favor, revisa los campos obligatorios y acepta los términos.");
       return;
     }
     if (telRaw.length !== 8) {
@@ -180,15 +180,52 @@ export default function RegisterPage() {
     try {
       setIsLoading(true);
 
+      // 👉 1) Si el draft ya tiene un OTP vigente y es para el mismo correo, úsalo y navega
+      if (draft?.otpEventId && draft?.otpExpiresAt) {
+        const stillValid = new Date(draft.otpExpiresAt).getTime() > Date.now();
+        if (stillValid && draft.correo?.toLowerCase() === mail) {
+          router.push({
+            pathname: "/(auth)/confirm-otp",
+            params: {
+              eventId: draft.otpEventId,
+              expiresAt: draft.otpExpiresAt,
+              email: mail,
+            },
+          });
+          return;
+        }
+      }
+
+      // 👉 2) Generar SIEMPRE un NUEVO OTP (backend hará replace en sitio si ya existe)
       const otpRes = await otpGenerate("verify_account", {
         email: mail,
         channel: "email",
         metadata: { telefono: telRaw, nombre: first, apellido: last },
         returnOtpInResponse: __DEV__,
+        replaceActive: true, // ✅ clave: fuerza regeneración en backend
       });
 
       if (!otpRes?.ok) {
-        showModal("No se pudo generar el OTP. Intenta nuevamente.");
+        // Fallback amable: si el server aún devolviera "ya existe", usa el draft si está válido
+        const serverMsg = (otpRes as any)?.message || (otpRes as any)?.error || "";
+        if (typeof serverMsg === "string" && serverMsg.includes("Ya existe un OTP activo")) {
+          if (draft?.otpEventId && draft?.otpExpiresAt && draft?.correo?.toLowerCase() === mail) {
+            router.push({
+              pathname: "/(auth)/confirm-otp",
+              params: {
+                eventId: draft.otpEventId,
+                expiresAt: draft.otpExpiresAt,
+                email: mail,
+              },
+            });
+            return;
+          }
+          // Si no hay draft, muestra mensaje genérico (sin el texto “ya existe…”)
+          showModal("No se pudo generar el OTP en este momento. Intenta nuevamente.");
+          return;
+        }
+
+        showModal(serverMsg || "No se pudo generar el OTP. Intenta nuevamente.");
         return;
       }
 
@@ -199,14 +236,16 @@ export default function RegisterPage() {
         return;
       }
 
-      // draft con TEL RAW
+      // guarda draft con TEL RAW + contexto OTP para reusar si regresa
       setDraft({
         nombre: first,
         apellido: last,
         telefono: telRaw,
         correo: mail,
         password: pass,
-      });
+        otpEventId: eventId,     // 👈 requiere que tu store lo soporte
+        otpExpiresAt: expiresAt, // 👈 idem
+      } as any);
 
       router.push({
         pathname: "/(auth)/confirm-otp",
@@ -217,8 +256,19 @@ export default function RegisterPage() {
           ...(otpRes.otp ? { otpPreview: otpRes.otp } : {}),
         },
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+
+      // Último salvage: si hay draft válido, navega para no bloquear al usuario
+      if (draft?.otpEventId && draft?.otpExpiresAt && draft?.correo?.toLowerCase() === norm(email).toLowerCase()) {
+        showModal("No se pudo generar un nuevo OTP, pero encontramos uno activo. Te llevamos a verificarlo.");
+        router.push({
+          pathname: "/(auth)/confirm-otp",
+          params: { eventId: draft.otpEventId, expiresAt: draft.otpExpiresAt, email: norm(email).toLowerCase() },
+        });
+        return;
+      }
+
       showModal("Ocurrió un error al solicitar el OTP. Intenta nuevamente.");
     } finally {
       setIsLoading(false);
@@ -257,49 +307,32 @@ export default function RegisterPage() {
                 showsVerticalScrollIndicator={false}
               >
                 <View style={{ gap: 14 }}>
-                  <LoginInput
-                    label="Nombre"
-                    type="text"
-                    value={firstName}
-                    onChange={setFirstName}
-                    required
-                    showError={firstNameError}
-                    onTyping={() => setFirstNameError(false)}
-                    placeholder="Tu nombre"
-                  />
+                  <LoginInput label="Nombre" type="text" value={firstName}
+                    onChange={setFirstName} required showError={firstNameError}
+                    onTyping={() => setFirstNameError(false)} placeholder="Tu nombre" />
 
-                  <LoginInput
-                    label="Apellido"
-                    type="text"
-                    value={lastName}
-                    onChange={setLastName}
-                    required
-                    showError={lastNameError}
-                    onTyping={() => setLastNameError(false)}
-                    placeholder="Tu apellido"
-                  />
+                  <LoginInput label="Apellido" type="text" value={lastName}
+                    onChange={setLastName} required showError={lastNameError}
+                    onTyping={() => setLastNameError(false)} placeholder="Tu apellido" />
 
-                  <LoginInput
-                    label="Número de Teléfono"
-                    type="phone"
-                    value={phone}
-                    onChange={(t) => {
-                      setPhone(formatHnPhone(t));
-                      setPhoneError(false);
-                    }}
-                    required
-                    showError={phoneError}
-                    onTyping={() => setPhoneError(false)}
-                    keyboardType="phone-pad"
-                    textContentType="telephoneNumber"
-                    placeholder="+504 9XXX XXXX"
-                  />
+                  <LoginInput label="Número de Teléfono" type="phone" value={phone}
+                    onChange={(t) => { setPhone(formatHnPhone(t)); setPhoneError(false); }}
+                    required showError={phoneError} onTyping={() => setPhoneError(false)}
+                    keyboardType="phone-pad" textContentType="telephoneNumber"
+                    placeholder="+504 9XXX XXXX" />
 
                   <LoginInput
                     label="Correo"
                     type="email"
                     value={email}
-                    onChange={setEmail}
+                    onChange={(v) => {
+                      setEmail(v);
+                      setEmailError(false);
+                      // 🧽 si cambia el correo, limpia OTP del draft para evitar arrastrar uno viejo
+                      if (draft?.correo && draft.correo.toLowerCase() !== norm(v).toLowerCase()) {
+                        setDraft({ ...draft, otpEventId: undefined, otpExpiresAt: undefined } as any);
+                      }
+                    }}
                     required
                     showError={emailError}
                     onTyping={() => setEmailError(false)}
@@ -308,37 +341,47 @@ export default function RegisterPage() {
                     placeholder="correo@ejemplo.com"
                   />
 
-                  <LoginInput
-                    label="Contraseña"
-                    type="password"
-                    value={password}
-                    onChange={setPassword}
-                    required
-                    showError={passwordError}
-                    onTyping={() => setPasswordError(false)}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    secureTextEntry
-                    placeholder="••••••••"
-                  />
+                  <LoginInput label="Contraseña" type="password" value={password}
+                    onChange={setPassword} required showError={passwordError}
+                    onTyping={() => setPasswordError(false)} autoCapitalize="none"
+                    autoCorrect={false} secureTextEntry placeholder="••••••••" />
 
-                  <LoginInput
-                    label="Confirmar Contraseña"
-                    type="password"
-                    value={confirm}
-                    onChange={setConfirm}
-                    required
-                    showError={confirmError}
-                    onTyping={() => setConfirmError(false)}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    secureTextEntry
-                    placeholder="••••••••"
-                  />
+                  <LoginInput label="Confirmar Contraseña" type="password" value={confirm}
+                    onChange={setConfirm} required showError={confirmError}
+                    onTyping={() => setConfirmError(false)} autoCapitalize="none"
+                    autoCorrect={false} secureTextEntry placeholder="••••••••" />
+
+                  {/* ✅ Checkbox Términos y condiciones */}
+                  <View style={{ gap: 6 }}>
+                    <TouchableOpacity
+                      style={styles.checkboxRow}
+                      onPress={() => { setAcceptTerms((v) => !v); setAcceptTermsError(false); }}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: acceptTerms }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons
+                        name={acceptTerms ? "checkbox-outline" : "square-outline"}
+                        size={22}
+                        color={acceptTerms ? "#a16207" : "#6b7280"}
+                        style={{ marginRight: 8 }}
+                      />
+                      <Text style={styles.checkboxText}>
+                        Acepto los{" "}
+                        {/* <Link href="/(auth)/terms-and-conditions" style={styles.linkBold}> */}
+                          términos y condiciones
+                        {/* </Link> */}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {acceptTermsError && (
+                      <Text style={styles.errorText}>Debes aceptar los términos y condiciones.</Text>
+                    )}
+                  </View>
 
                   <LoginButton
                     title={isLoading ? "Solicitando OTP..." : "Registrarse"}
-                    onPress={precheckAndMaybeConfirm} // 👈 primero valida, luego muestra modal
+                    onPress={precheckAndMaybeConfirm}
                     disabled={isLoading}
                   />
 
@@ -354,12 +397,7 @@ export default function RegisterPage() {
       </KeyboardAvoidingView>
 
       {/* Modales */}
-      <AlertModal
-        visible={isModalVisible}
-        title="Aviso"
-        message={modalMessage}
-        onClose={handleModalClose}
-      />
+      <AlertModal visible={isModalVisible} title="Aviso" message={modalMessage} onClose={handleModalClose} />
 
       <ConfirmModal
         visible={confirmVisible}
@@ -394,4 +432,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: "800", color: "#1f2937", textAlign: "center", marginBottom: 18 },
   linkBold: { color: "#a16207", fontWeight: "700" },
   footer: { marginTop: 18, color: "#6b7280", fontSize: 13 },
+  checkboxRow: { flexDirection: "row", alignItems: "center" },
+  checkboxText: { color: "#374151", flexShrink: 1 },
+  errorText: { color: "#dc2626", fontSize: 12, marginLeft: 30 },
 });

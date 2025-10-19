@@ -35,7 +35,11 @@ async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<T> {
     // intenta json -> si falla, usa texto
     const raw = await res.text();
     let data: any = null;
-    try { data = raw ? JSON.parse(raw) : null; } catch { /* raw no era JSON */ }
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      /* raw no era JSON */
+    }
 
     if (!res.ok) {
       const msg =
@@ -45,7 +49,7 @@ async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<T> {
 
       const err = new Error(
         `[API ERROR] ${method} ${url} -> ${res.status} ${res.statusText}\n` +
-        `Respuesta: ${msg}`
+          `Respuesta: ${msg}`
       ) as any;
       err.status = res.status;
       err.statusText = res.statusText;
@@ -190,6 +194,22 @@ function withAuthHeader(token?: string): Record<string, string> {
 }
 
 // --------- OTP: Generar -----------------------------------------------
+// Tipos de respuesta del generate
+export type OtpGenerateOk = {
+  ok: true;
+  id_event: string;
+  expires_at: string;
+  otp?: string; // solo en dev si returnOtpInResponse=true
+};
+
+export type OtpGenerateErr = {
+  ok: false;
+  error?: string;   // tu backend usa "error"
+  message?: string; // compat
+};
+
+export type OtpGenerateResp = OtpGenerateOk | OtpGenerateErr;
+
 /** Generar OTP para una acción dada (p.ej. "verify_account") */
 export async function otpGenerate(
   id_accion: string,
@@ -205,59 +225,47 @@ export async function otpGenerate(
     returnOtpInResponse?: boolean;
     /** access token del usuario (Supabase) */
     token?: string;
+    /** NUEVO: forzar regeneración si ya existe un OTP activo */
+    replaceActive?: boolean;
   }
-) {
-  const { email, channel = "email", ttlSeconds, metadata, returnOtpInResponse, token } = options ?? {};
-
-  return await apiFetch<{
-    ok: boolean;
-    id_event: string;
-    expires_at: string;
-    otp?: string; // solo en dev si returnOtpInResponse=true
-  }>("/api/otp/generate", {
-    method: "POST",
-    headers: {
-      ...withAuthHeader(token),
-    },
-    body: {
-      id_accion,
-      ...(email ? { email } : {}),
-      ...(channel ? { channel } : {}),
-      ...(ttlSeconds ? { ttlSeconds } : {}),
-      ...(metadata ? { metadata } : {}),
-      ...(returnOtpInResponse ? { returnOtpInResponse: true } : {}),
-    },
-  });
+): Promise<OtpGenerateResp> {
+  const {
+    email,
+    channel = "email",
+    ttlSeconds,
+    metadata,
+    returnOtpInResponse,
+    token,
+    replaceActive, // <-- nuevo
+  } = options ?? {};
+  try {
+    const data = await apiFetch<OtpGenerateOk>("/api/otp/generate", {
+      method: "POST",
+      headers: {
+        ...withAuthHeader(token),
+      },
+      body: {
+        id_accion,
+        ...(email ? { email } : {}),
+        ...(channel ? { channel } : {}),
+        ...(ttlSeconds ? { ttlSeconds } : {}),
+        ...(metadata ? { metadata } : {}),
+        ...(returnOtpInResponse ? { returnOtpInResponse: true } : {}),
+        ...(typeof replaceActive === "boolean" ? { replaceActive } : {}), // <-- enviar flag
+      },
+    });
+    return data; // ok:true...
+  } catch (error: any) {
+    // Normaliza error para que el front NO truene por tipos
+    const body = error?.body;
+    const errMsg =
+      (body && (body.error || body.message)) ||
+      error?.message ||
+      "No se pudo generar OTP.";
+    return { ok: false, error: String(errMsg) };
+  }
 }
 
-// --------- OTP: Verificar ---------------------------------------------
-/**
- * Verificar OTP
- * - Uso compatible con tu firma anterior:
- *    otpVerify("verify_account", "123456", token)
- * - Uso extendido (email opcional):
- *    otpVerify("verify_account", "123456", { email, token })
- */
-export async function otpVerify(
-  id_accion: string,
-  otp: string,
-  third?: string | { email?: string; token?: string }
-) {
-  const token = typeof third === "string" ? third : third?.token;
-  const email = typeof third === "object" ? third?.email : undefined;
-
-  return await apiFetch<{ ok: boolean; reason?: string }>("/api/otp/verify", {
-    method: "POST",
-    headers: {
-      ...withAuthHeader(token),
-    },
-    body: {
-      id_accion,
-      otp,
-      ...(email ? { email } : {}),
-    },
-  });
-}
 // --------- Usuarios: actualizar perfil actual (PUT + id) ----------------
 export type UpdateUsuarioPayload = {
   id: string;               // ⬅️ requerido por tu API
@@ -288,8 +296,49 @@ export async function actualizarUsuarioActual(
     });
     // Normaliza por si el backend no manda ok explícito
     if (res?.ok === true) return res;
-    return { ok: true, message: res?.message ?? "Actualizado." };
+    return { ok: true, message: (res as any)?.message ?? "Actualizado." };
   } catch (error: any) {
     return { ok: false, message: error?.message ?? "No se pudo actualizar el usuario." };
+  }
+}
+
+// --------- OTP: Verificar ----------------------------------------------
+export type OtpVerifyResponse = {
+  ok: boolean;
+  reason?: string;
+  message?: string;
+  details?: Record<string, any>;
+};
+
+export async function otpVerify(
+  id_accion: string,
+  otp: string,
+  opts?: { id_event?: string; email?: string; debug?: boolean }
+): Promise<OtpVerifyResponse> {
+  const body: Record<string, string> = {
+    id_accion,
+    otp: otp.normalize("NFKC").replace(/\D+/g, ""), // solo dígitos
+  };
+  if (opts?.id_event) body.id_event = opts.id_event;
+  if (opts?.email) body.email = opts.email;
+
+  const headers: Record<string, string> = {};
+  if (opts?.debug && process.env.NODE_ENV !== "production") {
+    headers["x-debug"] = "1";
+  }
+
+  try {
+    return await apiFetch<OtpVerifyResponse>("/api/otp/verify", {
+      method: "POST",
+      headers,
+      body,
+    });
+  } catch (error: any) {
+    // Normaliza error para que el front lo pueda mostrar
+    const body = error?.body;
+    const reason = body?.reason || undefined;
+    const message = body?.message || body?.error || error?.message || "Error al verificar OTP.";
+    const details = body?.details || undefined;
+    return { ok: false, reason, message, details };
   }
 }
