@@ -60,7 +60,7 @@ export default function AddressScreen() {
             <Text style={styles.headerTitle}>Mis direcciones</Text>
             <TouchableOpacity
               style={styles.addButton}
-              onPress={() => router.push("/new_address")}
+              onPress={() => router.push("/set_address")}
             >
               <Ionicons name="add-outline" size={20} color="#fff" />
               <Text style={styles.addButtonText}>Agregar</Text>

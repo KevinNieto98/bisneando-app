@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import React, { useState } from "react";
+import { useLocalSearchParams } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
   ScrollView,
   StatusBar,
@@ -13,6 +14,20 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function AddressFormScreen() {
+
+  const { lat, lng } = useLocalSearchParams<{ lat?: string; lng?: string }>();
+
+useEffect(() => {
+  if (lat && lng) {
+    const latitude = Number(lat);
+    const longitude = Number(lng);
+    // Aquí puedes guardar en estado, prellenar campos, hacer reverse geocoding, etc.
+    console.log("coords recibidas:", { latitude, longitude });
+  }
+}, [lat, lng]);
+
+
+
   const navigation = useNavigation();
 
   const [tipoDireccion, setTipoDireccion] = useState<"Casa" | "Trabajo" | "Otro">("Casa");
