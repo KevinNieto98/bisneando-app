@@ -1,4 +1,5 @@
 // SetAddressScreen.tsx
+import { MapSkeleton } from "@/components";
 import AlertModal from "@/components/ui/AlertModal";
 import Button from "@/components/ui/Button";
 import { Ionicons } from "@expo/vector-icons";
@@ -101,13 +102,7 @@ const handleContinue = () => {
       {/* Contenido */}
       <View style={styles.content}>
         {loading ? (
-          <View style={styles.skeletonContainer}>
-            <View style={styles.skeletonMap} />
-            <View style={styles.skeletonBadges}>
-              <View style={[styles.skeletonBar, { width: 220 }]} />
-              <View style={[styles.skeletonBar, { width: 260, marginTop: 8 }]} />
-            </View>
-          </View>
+          <MapSkeleton />
         ) : (
           <>
             <MapView

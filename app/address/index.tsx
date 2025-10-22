@@ -1,9 +1,12 @@
+import CardAddress, { type TipoDireccionId } from "@/components/CardAddress";
 import ModalDirecciones from "@/components/ModalDirecciones";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  Alert,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -13,29 +16,127 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AddressListSkeleton } from "@/components";
+import { useProfile } from "@/hooks/useProfile";
+import { supabase } from "@/lib/supabase";
+import { Direccion, fetchDireccionesByUid } from "@/services/api";
+
+type Addr = {
+  id: number;
+  tipo_direccion: TipoDireccionId;
+  nombre_direccion: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  isPrincipal?: boolean;
+};
+
+function nombreToTipoId(nombre?: string | null): TipoDireccionId {
+  const n = (nombre ?? "").trim().toLowerCase();
+  if (n === "casa") return 1;
+  if (n === "trabajo" || n === "oficina") return 2;
+  return 3;
+}
+
 export default function AddressScreen() {
   const navigation = useNavigation();
 
-  const [addresses] = useState([
-    {
-      id: 1,
-      tipo_direccion: "Casa",
-      referencia: "Colonia Kennedy, Tegucigalpa",
-      icon: "home-outline",
-    },
-    {
-      id: 2,
-      tipo_direccion: "Trabajo",
-      referencia: "Boulevard Suyapa, Edificio Torre Metrópolis",
-      icon: "briefcase-outline",
-    },
-  ]);
+  // ---- uid de auth ----
+  const [uid, setUid] = useState<string | null>(null);
 
-  const [selectedAddress, setSelectedAddress] = useState<any>(null);
+  useEffect(() => {
+    let mounted = true;
 
-  const handleMenuPress = (addr: any) => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!mounted) return;
+      setUid(data.user?.id ?? null);
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      setUid(session?.user?.id ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  // (Opcional) perfil para otros usos
+  const { profile } = useProfile(uid ?? undefined);
+
+  // ---- estado UI ----
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [addresses, setAddresses] = useState<Addr[]>([]);
+  const [selectedAddress, setSelectedAddress] = useState<Addr | null>(null);
+
+  const fetchData = async (hard = false) => {
+    if (!uid) return;
+    if (hard) setIsLoading(true);
+    try {
+      // Si quieres enviar token (recomendado si tu GET requiere auth):
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+
+      const rows: Direccion[] = await fetchDireccionesByUid(uid, {
+        token,
+        // principalOnly: false,
+        // limit: 50,
+        // offset: 0,
+      });
+
+      // Mapea a la forma que consume tu CardAddress
+      const mapped: Addr[] = rows.map((r) => ({
+        id: r.id_direccion,
+        tipo_direccion: nombreToTipoId(r.nombre_direccion),
+        nombre_direccion: r.nombre_direccion ?? "Sin nombre",
+        icon:
+          nombreToTipoId(r.nombre_direccion) === 1
+            ? "home-outline"
+            : nombreToTipoId(r.nombre_direccion) === 2
+            ? "briefcase-outline"
+            : "location-outline",
+        isPrincipal: !!r.isPrincipal,
+      }));
+
+      setAddresses(mapped);
+    } catch (e: any) {
+      console.error("fetch direcciones error:", e);
+      Alert.alert("Error", e?.message ?? "No se pudieron cargar las direcciones.");
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (uid) fetchData(true);
+  }, [uid]);
+
+  const handleMenuPress = (id: number) => {
+    const addr = addresses.find((a) => a.id === id) || null;
     setSelectedAddress(addr);
   };
+
+  const handleTogglePrincipal = async (id: number, next: boolean) => {
+    try {
+      // UI: asegura una sola principal
+      setAddresses((prev) =>
+        prev.map((a) =>
+          a.id === id ? { ...a, isPrincipal: next } : { ...a, isPrincipal: false }
+        )
+      );
+
+      // TODO: persistir en backend con tu endpoint PATCH/POST para setear principal
+      // const { data: session } = await supabase.auth.getSession();
+      // await apiSetPrincipal({ id_direccion: id }, session.session?.access_token);
+
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "No se pudo actualizar principal.");
+    }
+  };
+
+  const empty = !isLoading && addresses.length === 0;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -52,9 +153,14 @@ export default function AddressScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Contenido blanco redondeado */}
+      {/* Contenido blanco */}
       <View style={styles.content}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(false); }} />
+          }
+        >
           {/* Encabezado con título + botón agregar */}
           <View style={styles.topRow}>
             <Text style={styles.headerTitle}>Mis direcciones</Text>
@@ -67,31 +173,32 @@ export default function AddressScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Lista de direcciones */}
-          {addresses.map((addr) => (
-            <View key={addr.id} style={styles.card}>
-              <View style={styles.cardLeft}>
-                <Ionicons
-                  name={addr.icon as any}
-                  size={26}
-                  color={
-                    addr.tipo_direccion === "Trabajo" ? "#a16207" : "#eab308"
-                  }
-                />
-                <View style={styles.textContainer}>
-                  <Text style={styles.tipoDireccion}>{addr.tipo_direccion}</Text>
-                  <Text style={styles.referencia}>{addr.referencia}</Text>
-                </View>
-              </View>
+          {/* Skeleton */}
+          {isLoading && <AddressListSkeleton count={2} />}
 
-              <TouchableOpacity
-                onPress={() => handleMenuPress(addr)}
-                style={styles.menuButton}
-              >
-                <Ionicons name="ellipsis-vertical" size={20} color="#52525b" />
-              </TouchableOpacity>
+          {/* Vacío */}
+          {empty && (
+            <View style={{ paddingVertical: 24, alignItems: "center" }}>
+              <Ionicons name="location-outline" size={36} color="#9ca3af" />
+              <Text style={{ color: "#6b7280", marginTop: 8 }}>
+                Aún no tienes direcciones guardadas.
+              </Text>
             </View>
-          ))}
+          )}
+
+          {/* Lista */}
+          {!isLoading &&
+            addresses.map((addr) => (
+              <CardAddress
+                key={addr.id}
+                id={addr.id}
+                tipo_direccion={addr.tipo_direccion}
+                nombre_direccion={addr.nombre_direccion}
+                isPrincipal={!!addr.isPrincipal}
+                //onTogglePrincipal={handleTogglePrincipal}
+                onPressMenu={(id) => handleMenuPress(id as number)}
+              />
+            ))}
         </ScrollView>
       </View>
 
@@ -101,7 +208,7 @@ export default function AddressScreen() {
           isVisible={!!selectedAddress}
           onClose={() => setSelectedAddress(null)}
           tipo={selectedAddress.tipo_direccion}
-          referencia={selectedAddress.referencia}
+          referencia={selectedAddress.nombre_direccion}
         />
       )}
     </SafeAreaView>
@@ -109,10 +216,7 @@ export default function AddressScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFD600", // amarillo superior
-  },
+  container: { flex: 1, backgroundColor: "#FFD600" },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -120,11 +224,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 12,
   },
-  backButton: {
-    marginRight: 8,
-    padding: 6,
-    borderRadius: 20,
-  },
+  backButton: { marginRight: 8, padding: 6, borderRadius: 20 },
   content: {
     flex: 1,
     backgroundColor: "white",
@@ -132,21 +232,14 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     paddingTop: 20,
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
   topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 24,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1e293b",
-  },
+  headerTitle: { fontSize: 18, fontWeight: "700", color: "#1e293b" },
   addButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -155,44 +248,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 10,
   },
-  addButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    marginLeft: 4,
-    fontSize: 14,
-  },
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#f3f4f6",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  cardLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  textContainer: {
-    marginLeft: 10,
-    flexShrink: 1,
-  },
-  tipoDireccion: {
-    fontWeight: "700",
-    color: "#1e293b",
-    fontSize: 15,
-  },
-  referencia: {
-    color: "#52525b",
-    fontSize: 13,
-    marginTop: 2,
-  },
-  menuButton: {
-    padding: 4,
-  },
+  addButtonText: { color: "#fff", fontWeight: "700", marginLeft: 4, fontSize: 14 },
 });

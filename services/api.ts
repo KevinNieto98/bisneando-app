@@ -342,3 +342,150 @@ export async function otpVerify(
     return { ok: false, reason, message, details };
   }
 }
+
+// --------- Colonias: activas con cobertura ----------------------------
+export type Colonia = {
+  id_colonia: number;
+  nombre_colonia: string;
+  is_active: boolean;
+  tiene_cobertura: boolean;
+  referencia: string | null;
+  updated_at: string; // ISO
+};
+
+export async function fetchColoniasActivasConCobertura(options?: {
+  /** filtro por nombre (contiene, case-insensitive) */
+  search?: string;
+  /** tamaño de página */
+  limit?: number;
+  /** desplazamiento para paginación */
+  offset?: number;
+  /** columna de orden (por defecto id_colonia) */
+  orderBy?: "id_colonia" | "nombre_colonia" | "updated_at";
+  /** dirección de orden */
+  orderDir?: "asc" | "desc";
+}) {
+  const {
+    search,
+    limit,
+    offset,
+    orderBy = "id_colonia",
+    orderDir = "asc",
+  } = options ?? {};
+
+  try {
+    const qs = new URLSearchParams({
+      is_active: "true",
+      tiene_cobertura: "true",
+      orderBy,
+      orderDir,
+    });
+
+    if (typeof limit === "number") qs.set("limit", String(limit));
+    if (typeof offset === "number") qs.set("offset", String(offset));
+    if (search && search.trim()) qs.set("search", search.trim());
+
+    // Asumiendo que tu backend expone /api/colonias y respeta estos query params
+    // (p. ej., los traduces a filtros en tu route handler o en tu BFF).
+    return await apiFetch<Colonia[]>(`/api/colonias?${qs.toString()}`);
+  } catch (error) {
+    console.error("Error fetchColoniasActivasConCobertura:", error);
+    return [] as Colonia[];
+  }
+}
+
+
+// --------- Direcciones: crear -----------------------------------------
+export type DireccionRow = {
+  id_direccion: number;
+  uid: string;
+  latitude: number;       // Postgres DECIMAL devuelto como number si cabe
+  longitude: number;
+  id_colonia: number | null;
+  nombre_direccion: string | null;
+  isPrincipal: boolean;
+  referencia: string | null;
+  created_at: string;     // ISO
+  updated_at: string;     // ISO
+};
+
+export type CrearDireccionPayload = {
+  uid: string;                       // requerido
+  latitude: number;                  // requerido
+  longitude: number;                 // requerido
+  id_colonia?: number | null;
+  nombre_direccion?: string | null;  // "Casa", "Oficina", ...
+  isPrincipal?: boolean;             // default false
+  referencia?: string | null;
+  /** Si true (default), el backend desmarca otras principales del mismo uid */
+  enforceSinglePrincipal?: boolean;
+};
+
+export type CrearDireccionResult =
+  | { ok: true; direccion: DireccionRow }
+  | { ok: false; message: string };
+
+/**
+ * Crea una dirección llamando a POST /api/direcciones
+ * Si pasas un access token (Supabase) se enviará en Authorization: Bearer <token>
+ */
+export async function crearDireccion(
+  payload: CrearDireccionPayload,
+  token?: string
+): Promise<CrearDireccionResult> {
+  try {
+    const data = await apiFetch<DireccionRow>("/api/direcciones", {
+      method: "POST",
+      headers: {
+        ...withAuthHeader(token),
+      },
+      body: payload,
+    });
+    return { ok: true, direccion: data };
+  } catch (error: any) {
+    console.error("Error crearDireccion:", error);
+    return { ok: false, message: error?.message ?? "No se pudo crear la dirección." };
+  }
+}
+
+// --------- Direcciones: leer por uid -----------------------------------
+export type Direccion = DireccionRow; // reutiliza el tipo ya definido más arriba
+
+export async function fetchDireccionesByUid(
+  uid: string,
+  options?: {
+    principalOnly?: boolean; // si true, solo devuelve la principal
+    limit?: number;
+    offset?: number;
+    token?: string;          // access_token de Supabase (opcional)
+  }
+): Promise<Direccion[]> {
+  const { principalOnly, limit, offset, token } = options ?? {};
+  try {
+    const qs = new URLSearchParams({ uid });
+    if (typeof principalOnly === "boolean") qs.set("principalOnly", String(principalOnly));
+    if (typeof limit === "number") qs.set("limit", String(limit));
+    if (typeof offset === "number") qs.set("offset", String(offset));
+
+    return await apiFetch<Direccion[]>(`/api/direcciones?${qs.toString()}`, {
+      headers: { ...withAuthHeader(token) },
+    });
+  } catch (error) {
+    console.error("Error fetchDireccionesByUid:", error);
+    return [];
+  }
+}
+
+/** Conveniencia: trae solo la dirección principal (o null si no existe) */
+export async function fetchDireccionPrincipal(
+  uid: string,
+  token?: string
+): Promise<Direccion | null> {
+  try {
+    const list = await fetchDireccionesByUid(uid, { principalOnly: true, token, limit: 1, offset: 0 });
+    return list[0] ?? null;
+  } catch (error) {
+    console.error("Error fetchDireccionPrincipal:", error);
+    return null;
+  }
+}

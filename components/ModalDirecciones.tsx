@@ -8,7 +8,7 @@ import Icono from "./ui/Icon.native";
 interface Props {
   isVisible: boolean;
   onClose: () => void;
-  tipo: string;
+  tipo: number;
   referencia: string;
   iconName?: string; // 👈 nuevo prop para el icono
 }
