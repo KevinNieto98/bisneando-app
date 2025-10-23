@@ -1,4 +1,4 @@
-import CardAddress, { type TipoDireccionId } from "@/components/CardAddress";
+import CardAddress from "@/components/CardAddress";
 import ModalDirecciones from "@/components/ModalDirecciones";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -17,24 +17,20 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AddressListSkeleton } from "@/components";
+import { Button } from "@/components/ui/Button";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/lib/supabase";
 import { Direccion, fetchDireccionesByUid } from "@/services/api";
 
 type Addr = {
   id: number;
-  tipo_direccion: TipoDireccionId;
+  tipo_direccion: number;
   nombre_direccion: string;
+  referencia: string ;
   icon: keyof typeof Ionicons.glyphMap;
   isPrincipal?: boolean;
 };
 
-function nombreToTipoId(nombre?: string | null): TipoDireccionId {
-  const n = (nombre ?? "").trim().toLowerCase();
-  if (n === "casa") return 1;
-  if (n === "trabajo" || n === "oficina") return 2;
-  return 3;
-}
 
 export default function AddressScreen() {
   const navigation = useNavigation();
@@ -88,18 +84,21 @@ export default function AddressScreen() {
       // Mapea a la forma que consume tu CardAddress
       const mapped: Addr[] = rows.map((r) => ({
         id: r.id_direccion,
-        tipo_direccion: nombreToTipoId(r.nombre_direccion),
+        tipo_direccion: r.tipo_direccion,
         nombre_direccion: r.nombre_direccion ?? "Sin nombre",
         icon:
-          nombreToTipoId(r.nombre_direccion) === 1
+          r.tipo_direccion === 1
             ? "home-outline"
-            : nombreToTipoId(r.nombre_direccion) === 2
+            : r.tipo_direccion === 2
             ? "briefcase-outline"
             : "location-outline",
         isPrincipal: !!r.isPrincipal,
+        referencia: r.referencia ?? "",
       }));
 
       setAddresses(mapped);
+      console.log('addresses', addresses);
+      
     } catch (e: any) {
       console.error("fetch direcciones error:", e);
       Alert.alert("Error", e?.message ?? "No se pudieron cargar las direcciones.");
@@ -194,12 +193,25 @@ export default function AddressScreen() {
                 id={addr.id}
                 tipo_direccion={addr.tipo_direccion}
                 nombre_direccion={addr.nombre_direccion}
+                referencia={addr.referencia}
                 isPrincipal={!!addr.isPrincipal}
                 //onTogglePrincipal={handleTogglePrincipal}
                 onPressMenu={(id) => handleMenuPress(id as number)}
               />
             ))}
         </ScrollView>
+
+
+      {/* Botón flotante centrado abajo */}
+      <View style={styles.fabWrap}>
+        <Button
+          title="Usar"
+          iconName="Pin"
+          onPress={() => router.push("/set_address")}
+          variant="warning"
+          style={styles.ctaButton}
+        />
+      </View>
       </View>
 
       {/* Modal Direcciones */}
@@ -211,6 +223,7 @@ export default function AddressScreen() {
           referencia={selectedAddress.nombre_direccion}
         />
       )}
+
     </SafeAreaView>
   );
 }
@@ -249,4 +262,17 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   addButtonText: { color: "#fff", fontWeight: "700", marginLeft: 4, fontSize: 14 },
+
+  /* Botón flotante */
+  fabWrap: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 50,
+    alignItems: "center",
+  },
+  ctaButton: {
+    width: "100%",
+    maxWidth: 420,
+  },
 });

@@ -1,4 +1,5 @@
 // app/address/form.tsx (o donde corresponda)
+import AddressTypeSelector from "@/components/AddressSelector";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/lib/supabase";
@@ -79,7 +80,6 @@ export default function AddressFormScreen() {
   const { profile } = useProfile(userId);
 
   // --- estado del formulario ---
-  const [tipoDireccion, setTipoDireccion] = useState<"Casa" | "Trabajo" | "Otro">("Casa");
   const [nombreDireccion, setNombreDireccion] = useState("");
   const [colonia, setColonia] = useState("");
   const [coloniaId, setColoniaId] = useState<number | null>(null);
@@ -98,6 +98,8 @@ export default function AddressFormScreen() {
   // --- confirm modal ---
   const [showConfirm, setShowConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [tipoDireccion, setTipoDireccion] = useState(1); // 1=Casa por defecto
+
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onChangeSearch = (txt: string) => {
@@ -203,10 +205,11 @@ export default function AddressFormScreen() {
           latitude: latitud,
           longitude: longitud,
           id_colonia: coloniaId ?? null,
-          nombre_direccion: nombreDireccion || tipoDireccion,
+          nombre_direccion: nombreDireccion,
           isPrincipal: true, // o según tu UX
           referencia: referencia || null,
           enforceSinglePrincipal: true,
+          tipo_direccion:tipoDireccion,
         },
         token
       );
@@ -255,54 +258,12 @@ export default function AddressFormScreen() {
             {/* Título dentro del contenido */}
             <Text style={styles.title}>Nueva dirección</Text>
 
-            {/* Tipo de dirección */}
-            <Text style={styles.label}>Tipo de dirección</Text>
-            <View style={styles.typeContainer}>
-              <TouchableOpacity
-                style={[styles.typeButton, tipoDireccion === "Casa" && styles.typeButtonActive]}
-                onPress={() => setTipoDireccion("Casa")}
-                disabled={saving}
-              >
-                <Ionicons
-                  name="home-outline"
-                  size={22}
-                  color={tipoDireccion === "Casa" ? "#fff" : "#1e293b"}
-                />
-                <Text style={[styles.typeText, tipoDireccion === "Casa" && styles.typeTextActive]}>
-                  Casa
-                </Text>
-              </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.typeButton, tipoDireccion === "Trabajo" && styles.typeButtonActive]}
-                onPress={() => setTipoDireccion("Trabajo")}
-                disabled={saving}
-              >
-                <Ionicons
-                  name="briefcase-outline"
-                  size={22}
-                  color={tipoDireccion === "Trabajo" ? "#fff" : "#1e293b"}
-                />
-                <Text style={[styles.typeText, tipoDireccion === "Trabajo" && styles.typeTextActive]}>
-                  Oficina
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.typeButton, tipoDireccion === "Otro" && styles.typeButtonActive]}
-                onPress={() => setTipoDireccion("Otro")}
-                disabled={saving}
-              >
-                <Ionicons
-                  name="location-outline"
-                  size={22}
-                  color={tipoDireccion === "Otro" ? "#fff" : "#1e293b"}
-                />
-                <Text style={[styles.typeText, tipoDireccion === "Otro" && styles.typeTextActive]}>
-                  Otro
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <AddressTypeSelector
+              value={tipoDireccion}
+              onChange={(next) => setTipoDireccion(next)}  // 1,2,3
+              disabled={saving}
+            />
 
             {/* Nombre dirección */}
             <Text style={styles.label}>Nombre de la dirección</Text>

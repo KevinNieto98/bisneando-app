@@ -401,6 +401,7 @@ export type DireccionRow = {
   uid: string;
   latitude: number;       // Postgres DECIMAL devuelto como number si cabe
   longitude: number;
+  tipo_direccion: number;
   id_colonia: number | null;
   nombre_direccion: string | null;
   isPrincipal: boolean;
@@ -413,6 +414,7 @@ export type CrearDireccionPayload = {
   uid: string;                       // requerido
   latitude: number;                  // requerido
   longitude: number;                 // requerido
+  tipo_direccion: number;                 // requerido
   id_colonia?: number | null;
   nombre_direccion?: string | null;  // "Casa", "Oficina", ...
   isPrincipal?: boolean;             // default false
