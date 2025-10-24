@@ -1,4 +1,4 @@
-// app/address/form.tsx (o donde corresponda)
+// app/address/form.tsx (ajusta la ruta si difiere)
 import AddressTypeSelector from "@/components/AddressSelector";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useProfile } from "@/hooks/useProfile";
@@ -7,7 +7,7 @@ import {
   Colonia,
   crearDireccion,
   fetchColoniasActivasConCobertura,
-} from "@/services/api"; // ⬅️ Ajusta la ruta si usas '@/lib/api'
+} from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -95,12 +95,12 @@ export default function AddressFormScreen() {
   const [hasMore, setHasMore] = useState(true);
   const pageSize = 30;
 
-  // --- confirm modal ---
+  // --- confirm modal / saving ---
   const [showConfirm, setShowConfirm] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(false); // 👈 usar para bloquear inputs
   const [tipoDireccion, setTipoDireccion] = useState(1); // 1=Casa por defecto
 
-
+  // debounce search
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onChangeSearch = (txt: string) => {
     setSearch(txt);
@@ -153,6 +153,7 @@ export default function AddressFormScreen() {
   }, [selectorOpen]);
 
   const handleSelectColonia = (item: Colonia) => {
+    if (saving) return; // 👈 prevenimos toques mientras guarda
     setColonia(item.nombre_colonia);
     setColoniaId(item.id_colonia);
     if (!referencia && item.referencia) setReferencia(item.referencia);
@@ -161,13 +162,14 @@ export default function AddressFormScreen() {
 
   // --- abrir modal de confirmación desde el botón Guardar ---
   const handleSave = () => {
+    if (saving) return; // 👈 evitar doble tap
     setShowConfirm(true);
   };
 
   // --- acción confirmada: hace POST y navega ---
   const confirmAndCreate = async () => {
     if (saving) return;
-    setSaving(true);
+    setSaving(true); // 👈 activa bloqueo
 
     try {
       const uid = userId ?? null; // Auth UID
@@ -187,14 +189,11 @@ export default function AddressFormScreen() {
         longitud,
       });
 
-      if (!uid) {
-        throw new Error("No hay usuario autenticado (uid).");
-      }
+      if (!uid) throw new Error("No hay usuario autenticado (uid).");
       if (latitud == null || longitud == null) {
         throw new Error("Coordenadas inválidas: latitude/longitude requeridas.");
       }
 
-      // Access token opcional para Authorization
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
 
@@ -209,7 +208,7 @@ export default function AddressFormScreen() {
           isPrincipal: true, // o según tu UX
           referencia: referencia || null,
           enforceSinglePrincipal: true,
-          tipo_direccion:tipoDireccion,
+          tipo_direccion: tipoDireccion,
         },
         token
       );
@@ -219,12 +218,11 @@ export default function AddressFormScreen() {
       }
 
       setShowConfirm(false);
-      // Navega a app/address
       router.replace("/address");
     } catch (err: any) {
       Alert.alert("Error", err?.message ?? "Ocurrió un error al guardar la dirección.");
     } finally {
-      setSaving(false);
+      setSaving(false); // 👈 libera bloqueo
     }
   };
 
@@ -238,15 +236,16 @@ export default function AddressFormScreen() {
       {/* Header amarillo solo con back */}
       <View style={styles.header}>
         <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          style={[styles.backButton, saving && { opacity: 0.5 }]}
+          onPress={() => !saving && navigation.goBack()} // 👈 bloquea back tap
           activeOpacity={0.7}
+          disabled={saving}
         >
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
       </View>
 
-      {/* KeyboardAvoidingView para que el teclado no tape el input de referencia */}
+      {/* KeyboardAvoidingView */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -254,66 +253,91 @@ export default function AddressFormScreen() {
       >
         {/* Contenido principal */}
         <View style={styles.content}>
-          <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-            {/* Título dentro del contenido */}
-            <Text style={styles.title}>Nueva dirección</Text>
-
-
-            <AddressTypeSelector
-              value={tipoDireccion}
-              onChange={(next) => setTipoDireccion(next)}  // 1,2,3
-              disabled={saving}
-            />
-
-            {/* Nombre dirección */}
-            <Text style={styles.label}>Nombre de la dirección</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ejemplo: Casa mamá, apartamento, oficina principal..."
-              placeholderTextColor="#9ca3af"
-              value={nombreDireccion}
-              onChangeText={setNombreDireccion}
-              returnKeyType="next"
-              editable={!saving}
-            />
-
-            {/* Colonia */}
-            <Text style={styles.label}>Colonia</Text>
-            <TouchableOpacity
-              style={styles.selector}
-              onPress={() => !saving && setSelectorOpen(true)}
-              disabled={saving}
+          {/* Bloquea toques mientras guarda */}
+          <View style={{ flex: 1 }} pointerEvents={saving ? "none" : "auto"}>
+            <ScrollView
+              contentContainerStyle={styles.scroll}
+              keyboardShouldPersistTaps="handled"
             >
-              <Text style={[styles.selectorText, colonia ? styles.textSelected : {}]}>
-                {colonia || "Seleccionar colonia"}
-              </Text>
-              <Ionicons name="chevron-down" size={20} color="#6b7280" />
-            </TouchableOpacity>
+              <Text style={styles.title}>Nueva dirección</Text>
 
-            {/* Referencia */}
-            <Text style={styles.label}>Referencia</Text>
-            <TextInput
-              style={styles.textArea}
-              multiline
-              numberOfLines={6}
-              placeholder="Ejemplo: Casa verde con portón blanco frente a la pulpería"
-              placeholderTextColor="#9ca3af"
-              value={referencia}
-              onChangeText={setReferencia}
-              textAlignVertical="top"
-              blurOnSubmit={false}
-              editable={!saving}
-            />
+              <AddressTypeSelector
+                value={tipoDireccion}
+                onChange={(next) => !saving && setTipoDireccion(next)}
+                disabled={saving} // 👈
+              />
 
-            {/* Botón guardar */}
-            <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving}>
-              {saving ? (
-                <ActivityIndicator />
-              ) : (
-                <Text style={styles.saveButtonText}>Guardar dirección</Text>
-              )}
-            </TouchableOpacity>
-          </ScrollView>
+              {/* Nombre dirección */}
+              <Text style={styles.label}>Nombre de la dirección</Text>
+              <TextInput
+                style={[styles.input, saving && { opacity: 0.6 }]}
+                placeholder="Ejemplo: Casa mamá, apartamento, oficina principal..."
+                placeholderTextColor="#9ca3af"
+                value={nombreDireccion}
+                onChangeText={setNombreDireccion}
+                returnKeyType="next"
+                editable={!saving} // 👈
+              />
+
+              {/* Colonia */}
+              <Text style={styles.label}>Colonia</Text>
+              <TouchableOpacity
+                style={[styles.selector, saving && { opacity: 0.6 }]}
+                onPress={() => !saving && setSelectorOpen(true)}
+                disabled={saving} // 👈
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.selectorText,
+                    colonia ? styles.textSelected : {},
+                  ]}
+                >
+                  {colonia || "Seleccionar colonia"}
+                </Text>
+                <Ionicons name="chevron-down" size={20} color="#6b7280" />
+              </TouchableOpacity>
+
+              {/* Referencia */}
+              <Text style={styles.label}>Referencia</Text>
+              <TextInput
+                style={[styles.textArea, saving && { opacity: 0.6 }]}
+                multiline
+                numberOfLines={6}
+                placeholder="Ejemplo: Casa verde con portón blanco frente a la pulpería"
+                placeholderTextColor="#9ca3af"
+                value={referencia}
+                onChangeText={setReferencia}
+                textAlignVertical="top"
+                blurOnSubmit={false}
+                editable={!saving} // 👈
+              />
+
+              {/* Botón guardar */}
+              <TouchableOpacity
+                style={[
+                  styles.saveButton,
+                  saving && { opacity: 0.7 },
+                ]}
+                onPress={handleSave}
+                disabled={saving} // 👈
+              >
+                {saving ? (
+                  <ActivityIndicator />
+                ) : (
+                  <Text style={styles.saveButtonText}>Guardar dirección</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+
+          {/* Overlay bloqueante mientras saving */}
+          {saving && (
+            <View style={styles.blockOverlay}>
+              <ActivityIndicator size="large" />
+              <Text style={styles.blockText}>Guardando…</Text>
+            </View>
+          )}
         </View>
       </KeyboardAvoidingView>
 
@@ -454,7 +478,7 @@ export default function AddressFormScreen() {
         icon="help-circle"
         confirmText={saving ? "Guardando..." : "Sí, guardar"}
         cancelText="Cancelar"
-        onCancel={() => !saving && setShowConfirm(false)}
+        onCancel={() => !saving && setShowConfirm(false)} // 👈 bloquea cerrar mientras guarda
         onConfirm={confirmAndCreate}
       />
     </SafeAreaView>
@@ -481,22 +505,6 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 20, paddingBottom: 60 },
   title: { fontSize: 20, fontWeight: "700", color: "#1e293b", marginBottom: 10 },
   label: { fontWeight: "600", color: "#1e293b", marginBottom: 8, marginTop: 16 },
-  typeContainer: { flexDirection: "row", justifyContent: "space-between" },
-  typeButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f3f4f6",
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    marginHorizontal: 4,
-  },
-  typeButtonActive: { backgroundColor: "#facc15", borderColor: "#facc15" },
-  typeText: { marginLeft: 6, fontWeight: "600", color: "#1e293b" },
-  typeTextActive: { color: "#fff" },
   input: {
     backgroundColor: "#f9fafb",
     borderRadius: 12,
@@ -540,4 +548,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   saveButtonText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+
+  // Overlay que bloquea toda interacción mientras saving = true
+  blockOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    top: 0,
+    backgroundColor: "rgba(255,255,255,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  blockText: { color: "#111827", fontWeight: "700" },
 });

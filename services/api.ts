@@ -491,3 +491,22 @@ export async function fetchDireccionPrincipal(
     return null;
   }
 }
+
+
+export async function eliminarDireccion(id: number) {
+  const t0 = Date.now();
+  const url = `/api/direcciones?id=${id}`;
+  console.log("[eliminarDireccion] start ->", { id, url });
+
+  try {
+    const resp = await apiFetch<{ message?: string; deletedId: number }>(url, { method: "DELETE" });
+    console.log("[eliminarDireccion] OK <-", { resp, durationMs: Date.now() - t0 });
+    return { ok: true as const, deletedId: resp.deletedId };
+  } catch (error: any) {
+    console.log("[eliminarDireccion] CATCH <-", {
+      status: error?.status, url: error?.url, body: error?.body, message: error?.message,
+      durationMs: Date.now() - t0,
+    });
+    return { ok: false as const, message: error?.message ?? "No se pudo eliminar la dirección.", status: error?.status };
+  }
+}

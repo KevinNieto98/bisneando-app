@@ -1,3 +1,4 @@
+// components/CardAddress.tsx
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -8,25 +9,21 @@ export type CardAddressProps = {
   nombre_direccion: string;
   iconOverride?: keyof typeof Ionicons.glyphMap;
   isPrincipal?: boolean;
+  isSelected?: boolean;                 // 👈 usado para resaltar
   referencia?: string;
-  onTogglePrincipal?: (id: number | string, next: boolean) => void;
   onPressMenu?: (id: number | string) => void;
+  onPressCard?: (id: number | string) => void; // 👈 tocar card = seleccionar
 };
 
-// 🎨 Colores de marca / UI
+// 🎨 Colores
 const BRAND_YELLOW = "#facc15";
 const WORK_BROWN = "#a16207";
-const GRAY_ON = "#d4d4d8";
 
 function getTipoMeta(tipo: number) {
   switch (tipo) {
-    case 1:
-      return { label: "Casa", icon: "home-outline" as const, color: BRAND_YELLOW };
-    case 2:
-      return { label: "Trabajo", icon: "briefcase-outline" as const, color: WORK_BROWN };
-    case 3:
-    default:
-      return { label: "Otro", icon: "location-outline" as const, color: BRAND_YELLOW };
+    case 1: return { label: "Casa", icon: "home-outline" as const, color: BRAND_YELLOW };
+    case 2: return { label: "Trabajo", icon: "briefcase-outline" as const, color: WORK_BROWN };
+    default: return { label: "Otro", icon: "location-outline" as const, color: BRAND_YELLOW };
   }
 }
 
@@ -37,17 +34,19 @@ const CardAddress: React.FC<CardAddressProps> = ({
   iconOverride,
   referencia,
   isPrincipal = false,
-  onTogglePrincipal,
+  isSelected = false,
   onPressMenu,
+  onPressCard,
 }) => {
   const meta = getTipoMeta(tipo_direccion);
-
   const iconName = iconOverride ?? meta.icon;
 
-  // Estilos dinámicos para resaltar la tarjeta principal
+  // mismo estilo para principal o seleccionada
+  const highlighted = isPrincipal || isSelected;
+
   const cardStyle = [
     styles.card,
-    isPrincipal && {
+    highlighted && {
       backgroundColor: "#fef3c7", // amber-100
       borderColor: "#f59e0b",     // amber-500
       shadowColor: "#f59e0b",
@@ -59,18 +58,15 @@ const CardAddress: React.FC<CardAddressProps> = ({
   ];
 
   return (
-    <View style={cardStyle}>
-      {/* Toca la parte izquierda para marcar como principal */}
-      <TouchableOpacity
-        activeOpacity={0.8}
-        style={styles.left}
-        onPress={() => onTogglePrincipal?.(id, true)}
-        accessibilityLabel="Marcar esta dirección como principal"
-      >
-        {/* Icono dentro de círculo amarillo */}
-        <View style={[styles.iconCircle, isPrincipal && styles.iconCirclePrincipal]}>
-          <Ionicons name={iconName} size={18} color="#111827" /> 
-          {/* negro: #111827 */}
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={() => onPressCard?.(id)}   // 👈 ahora cualquier toque en la card selecciona
+      style={cardStyle}
+    >
+      {/* ⛔️ Antes era TouchableOpacity: tragaba el toque del contenedor */}
+      <View style={styles.left}>
+        <View style={[styles.iconCircle, highlighted && styles.iconCirclePrincipal]}>
+          <Ionicons name={iconName} size={18} color="#111827" />
         </View>
 
         <View style={styles.texts}>
@@ -82,19 +78,27 @@ const CardAddress: React.FC<CardAddressProps> = ({
                 <Text style={styles.badgeText}>Principal</Text>
               </View>
             )}
+            {!isPrincipal && isSelected && (
+              <View style={[styles.badge, { backgroundColor: "#16a34a" }]}>
+                <Ionicons name="checkmark" size={12} color="#fff" />
+                <Text style={styles.badgeText}>Seleccionada</Text>
+              </View>
+            )}
           </View>
-          <Text style={styles.nombre} numberOfLines={2}>
-            {referencia}
-          </Text>
+          {!!referencia && (
+            <Text style={styles.nombre} numberOfLines={2}>
+              {referencia}
+            </Text>
+          )}
         </View>
-      </TouchableOpacity>
+      </View>
 
       <View style={styles.right}>
         <TouchableOpacity onPress={() => onPressMenu?.(id)} style={styles.menuBtn}>
           <Ionicons name="ellipsis-vertical" size={20} color="#52525b" />
         </TouchableOpacity>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 
@@ -115,13 +119,12 @@ const styles = StyleSheet.create({
   },
   left: { flexDirection: "row", alignItems: "center", flex: 1 },
   texts: { marginLeft: 10, flexShrink: 1 },
-  row: { flexDirection: "row", alignItems: "center", gap: 6 },
+  row: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   tipo: { fontWeight: "700", color: "#1e293b", fontSize: 15 },
   nombre: { color: "#52525b", fontSize: 13, marginTop: 2, flexShrink: 1 },
   right: { flexDirection: "row", alignItems: "center" },
   menuBtn: { padding: 6, marginLeft: 8, borderRadius: 10 },
 
-  // 🔵 Círculo para el icono
   iconCircle: {
     width: 36,
     height: 36,
@@ -130,7 +133,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // Opcional: cuando es principal, le damos un borde (“ring”) sutil
   iconCirclePrincipal: {
     borderWidth: 2,
     borderColor: "#f59e0b",

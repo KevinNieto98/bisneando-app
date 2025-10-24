@@ -1,104 +1,99 @@
-import CardAddress from "@/components/CardAddress";
+// app/(app)/address/AddressScreen.tsx
+
 import ModalDirecciones from "@/components/ModalDirecciones";
-import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { Button } from "@/components/ui/Button";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useProfile } from "@/hooks/useProfile";
+import { supabase } from "@/lib/supabase";
+import { Direccion, fetchDireccionesByUid } from "@/services/api";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+
+import { Ionicons } from "@expo/vector-icons";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-import { AddressListSkeleton } from "@/components";
-import { Button } from "@/components/ui/Button";
-import { useProfile } from "@/hooks/useProfile";
-import { supabase } from "@/lib/supabase";
-import { Direccion, fetchDireccionesByUid } from "@/services/api";
+import AddressHeader from "./components/AddressHeader";
+import AddressList from "./components/AddressList";
+import AddressSuccessBanner from "./components/AddressSuccessBanner";
 
 type Addr = {
   id: number;
   tipo_direccion: number;
   nombre_direccion: string;
-  referencia: string ;
-  icon: keyof typeof Ionicons.glyphMap;
+  referencia: string;
   isPrincipal?: boolean;
 };
 
-
 export default function AddressScreen() {
-  const navigation = useNavigation();
-
   // ---- uid de auth ----
   const [uid, setUid] = useState<string | null>(null);
-
   useEffect(() => {
     let mounted = true;
-
     (async () => {
       const { data } = await supabase.auth.getUser();
       if (!mounted) return;
       setUid(data.user?.id ?? null);
     })();
-
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
       setUid(session?.user?.id ?? null);
     });
-
     return () => {
       mounted = false;
       sub.subscription.unsubscribe();
     };
   }, []);
 
-  // (Opcional) perfil para otros usos
-  const { profile } = useProfile(uid ?? undefined);
+  // (Opcional) perfil
+  useProfile(uid ?? undefined);
 
-  // ---- estado UI ----
+  // ---- estado UI/negocio ----
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState(false);
   const [addresses, setAddresses] = useState<Addr[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<Addr | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null); // 👉 seleccionada en UI
+  const [successMsg, setSuccessMsg] = useState<string>("");
 
+  // Confirmación del botón "Usar"
+  const [showUseConfirm, setShowUseConfirm] = useState(false);
+
+  // solo seleccionar auto en el PRIMER load
+  const firstLoadRef = useRef(true);
+
+  // ---- fetch direcciones ----
   const fetchData = async (hard = false) => {
     if (!uid) return;
     if (hard) setIsLoading(true);
     try {
-      // Si quieres enviar token (recomendado si tu GET requiere auth):
       const { data: session } = await supabase.auth.getSession();
       const token = session.session?.access_token;
 
-      const rows: Direccion[] = await fetchDireccionesByUid(uid, {
-        token,
-        // principalOnly: false,
-        // limit: 50,
-        // offset: 0,
-      });
+      const rows: Direccion[] = await fetchDireccionesByUid(uid, { token });
 
-      // Mapea a la forma que consume tu CardAddress
       const mapped: Addr[] = rows.map((r) => ({
         id: r.id_direccion,
         tipo_direccion: r.tipo_direccion,
         nombre_direccion: r.nombre_direccion ?? "Sin nombre",
-        icon:
-          r.tipo_direccion === 1
-            ? "home-outline"
-            : r.tipo_direccion === 2
-            ? "briefcase-outline"
-            : "location-outline",
-        isPrincipal: !!r.isPrincipal,
         referencia: r.referencia ?? "",
+        isPrincipal: !!r.isPrincipal,
       }));
 
       setAddresses(mapped);
-      console.log('addresses', addresses);
-      
+
+      // ✅ Primer load: seleccionar la principal
+      if (firstLoadRef.current) {
+        const principal = mapped.find((m) => m.isPrincipal);
+        setSelectedId(principal?.id ?? null);
+        firstLoadRef.current = false;
+      }
     } catch (e: any) {
       console.error("fetch direcciones error:", e);
       Alert.alert("Error", e?.message ?? "No se pudieron cargar las direcciones.");
@@ -112,132 +107,127 @@ export default function AddressScreen() {
     if (uid) fetchData(true);
   }, [uid]);
 
-  const handleMenuPress = (id: number) => {
+  // Auto-ocultar banner verde
+  useEffect(() => {
+    if (!successMsg) return;
+    const t = setTimeout(() => setSuccessMsg(""), 1600);
+    return () => clearTimeout(t);
+  }, [successMsg]);
+
+  const handlePressCard = (id: number | string) => {
+    const n = Number(id);
+    setSelectedId((prev) => (prev === n ? null : n));
+  };
+
+  const handlePressMenu = (id: number) => {
     const addr = addresses.find((a) => a.id === id) || null;
     setSelectedAddress(addr);
   };
 
-  const handleTogglePrincipal = async (id: number, next: boolean) => {
-    try {
-      // UI: asegura una sola principal
-      setAddresses((prev) =>
-        prev.map((a) =>
-          a.id === id ? { ...a, isPrincipal: next } : { ...a, isPrincipal: false }
-        )
-      );
+  const handleDeleted = async (_id: number) => {
+    setSuccessMsg("Dirección borrada con éxito");
+    await fetchData(true);
+    setSelectedAddress(null);
+    setSelectedId((prev) => (prev === _id ? null : prev));
+  };
 
-      // TODO: persistir en backend con tu endpoint PATCH/POST para setear principal
-      // const { data: session } = await supabase.auth.getSession();
-      // await apiSetPrincipal({ id_direccion: id }, session.session?.access_token);
-
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo actualizar principal.");
+  // Abrir modal del botón "Usar"
+  const openUseConfirm = () => {
+    if (selectedId == null) {
+      Alert.alert("Selecciona una dirección", "Por favor elige una dirección de la lista.");
+      return;
     }
+    setShowUseConfirm(true);
+  };
+
+  // Confirmación del modal: de momento solo console.log
+  const confirmUse = () => {
+    if (selectedId != null) {
+      console.log("Cambiar dirección principal a id:", selectedId);
+      // Aquí luego puedes llamar a tu endpoint PATCH para setear principal,
+      // y tras éxito hacer fetchData(true)
+    }
+    setShowUseConfirm(false);
   };
 
   const empty = !isLoading && addresses.length === 0;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+            <TouchableOpacity style={styles.backButton} onPress={() => router.push("/(tabs)/profile")} activeOpacity={0.7}>
+              <Ionicons name="arrow-back" size={24} color="#000" />
+            </TouchableOpacity>
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
 
-      {/* Header amarillo */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
-      </View>
 
-      {/* Contenido blanco */}
       <View style={styles.content}>
+      <AddressHeader onBack={() => router.back()} onAdd={() => router.push("/set_address")} />
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(false); }} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                fetchData(false);
+              }}
+            />
           }
         >
-          {/* Encabezado con título + botón agregar */}
-          <View style={styles.topRow}>
-            <Text style={styles.headerTitle}>Mis direcciones</Text>
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => router.push("/set_address")}
-            >
-              <Ionicons name="add-outline" size={20} color="#fff" />
-              <Text style={styles.addButtonText}>Agregar</Text>
-            </TouchableOpacity>
-          </View>
+          <AddressSuccessBanner message={successMsg} />
 
-          {/* Skeleton */}
-          {isLoading && <AddressListSkeleton count={2} />}
-
-          {/* Vacío */}
-          {empty && (
-            <View style={{ paddingVertical: 24, alignItems: "center" }}>
-              <Ionicons name="location-outline" size={36} color="#9ca3af" />
-              <Text style={{ color: "#6b7280", marginTop: 8 }}>
-                Aún no tienes direcciones guardadas.
-              </Text>
-            </View>
-          )}
-
-          {/* Lista */}
-          {!isLoading &&
-            addresses.map((addr) => (
-              <CardAddress
-                key={addr.id}
-                id={addr.id}
-                tipo_direccion={addr.tipo_direccion}
-                nombre_direccion={addr.nombre_direccion}
-                referencia={addr.referencia}
-                isPrincipal={!!addr.isPrincipal}
-                //onTogglePrincipal={handleTogglePrincipal}
-                onPressMenu={(id) => handleMenuPress(id as number)}
-              />
-            ))}
+          <AddressList
+            isLoading={isLoading}
+            empty={empty}
+            addresses={addresses}
+            selectedId={selectedId}
+            onPressCard={handlePressCard}
+            onPressMenu={(id) => handlePressMenu(id as number)}
+          />
         </ScrollView>
 
-
-      {/* Botón flotante centrado abajo */}
-      <View style={styles.fabWrap}>
-        <Button
-          title="Usar"
-          iconName="Pin"
-          onPress={() => router.push("/set_address")}
-          variant="warning"
-          style={styles.ctaButton}
-        />
+        {/* Botón flotante centrado abajo */}
+        <View style={styles.fabWrap}>
+          <Button
+            title="Usar"
+            iconName="Pin"
+            onPress={openUseConfirm}     // 👈 abre el ConfirmModal
+            variant="warning"
+            style={styles.ctaButton}
+          />
+        </View>
       </View>
-      </View>
 
-      {/* Modal Direcciones */}
+      {/* Modal Direcciones (acciones Editar/Eliminar) */}
       {selectedAddress && (
         <ModalDirecciones
           isVisible={!!selectedAddress}
           onClose={() => setSelectedAddress(null)}
+          id_direccion={selectedAddress.id}
           tipo={selectedAddress.tipo_direccion}
-          referencia={selectedAddress.nombre_direccion}
+          nombre_direccion={selectedAddress.nombre_direccion}
+          referencia={selectedAddress.referencia}
+          onDeleted={handleDeleted}
         />
       )}
 
+      {/* Modal de confirmación al tocar "Usar" */}
+      <ConfirmModal
+        visible={showUseConfirm}
+        title="Confirmación"
+        message="¿Estás seguro que deseas cambiar la dirección principal?"
+        icon="help-circle"
+        confirmText="Sí, cambiar"
+        cancelText="Cancelar"
+        onConfirm={confirmUse}                // 👈 console.log del id
+        onCancel={() => setShowUseConfirm(false)}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFD600" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFD600",
-    paddingHorizontal: 10,
-    paddingVertical: 12,
-  },
-  backButton: { marginRight: 8, padding: 6, borderRadius: 20 },
   content: {
     flex: 1,
     backgroundColor: "white",
@@ -246,24 +236,8 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  headerTitle: { fontSize: 18, fontWeight: "700", color: "#1e293b" },
-  addButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#facc15",
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-  },
-  addButtonText: { color: "#fff", fontWeight: "700", marginLeft: 4, fontSize: 14 },
 
-  /* Botón flotante */
+  // botón flotante
   fabWrap: {
     position: "absolute",
     left: 16,
@@ -275,4 +249,5 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 420,
   },
+    backButton: { marginRight: 8, padding: 6, borderRadius: 20, alignSelf: "flex-start" },
 });
