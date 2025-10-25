@@ -61,7 +61,7 @@ const CategorySection: React.FC<Props> = ({ categories }) => {
               },
             ]}
             onPress={() => {
-              console.log("Ver más categorías");
+           
               // router.push("/categories") si quieres navegar
             }}
           >

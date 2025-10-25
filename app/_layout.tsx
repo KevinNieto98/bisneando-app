@@ -23,7 +23,7 @@ export default function RootLayout() {
         // Ubicación
         const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
         if (locStatus !== 'granted') {
-          console.log('Ubicación denegada');
+    
         }
 
     

@@ -1,9 +1,10 @@
-// app/address/form.tsx (ajusta la ruta si difiere)
+// app/address/form.tsx  (ajusta la ruta si difiere)
 import AddressTypeSelector from "@/components/AddressSelector";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/lib/supabase";
 import {
+  actualizarDireccion,
   Colonia,
   crearDireccion,
   fetchColoniasActivasConCobertura,
@@ -34,8 +35,36 @@ export default function AddressFormScreen() {
   const router = useRouter();
   const navigation = useNavigation();
 
+  // --- params desde /new_address ---
+  const {
+    lat,
+    lng,
+    isEdit,
+    id_direccion,
+    nombre_direccion: pNombreDir,
+    referencia: pReferencia,
+    tipo_direccion: pTipoDir,
+    id_colonia: pIdColonia, // viene desde set_address
+  } = useLocalSearchParams<{
+    lat?: string;
+    lng?: string;
+    isEdit?: string;
+    id_direccion?: string;
+    nombre_direccion?: string;
+    referencia?: string;
+    tipo_direccion?: string;
+    id_colonia?: string;
+  }>();
+
+  const editMode =
+    isEdit === "1" || isEdit?.toLowerCase() === "true" || isEdit === "yes";
+
+  const targetColoniaId = useMemo(() => {
+    const n = pIdColonia ? Number(pIdColonia) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [pIdColonia]);
+
   // --- coords desde params ---
-  const { lat, lng } = useLocalSearchParams<{ lat?: string; lng?: string }>();
   const coords = useMemo(() => {
     const latitude = lat ? Number(lat) : undefined;
     const longitude = lng ? Number(lng) : undefined;
@@ -44,7 +73,7 @@ export default function AddressFormScreen() {
 
   useEffect(() => {
     if (coords.latitude != null && coords.longitude != null) {
-      console.log("coords recibidas:", coords);
+    
     }
   }, [coords]);
 
@@ -76,7 +105,7 @@ export default function AddressFormScreen() {
     };
   }, []);
 
-  // --- perfil del cliente (id en tbl_usuarios) ---
+  // --- perfil del cliente ---
   const { profile } = useProfile(userId);
 
   // --- estado del formulario ---
@@ -84,6 +113,26 @@ export default function AddressFormScreen() {
   const [colonia, setColonia] = useState("");
   const [coloniaId, setColoniaId] = useState<number | null>(null);
   const [referencia, setReferencia] = useState("");
+  const [tipoDireccion, setTipoDireccion] = useState(1); // 1=Casa
+
+  // ✅ Prefill si isEdit = '1'
+  useEffect(() => {
+    if (editMode) {
+      if (typeof pNombreDir === "string") setNombreDireccion(pNombreDir);
+      if (typeof pReferencia === "string") setReferencia(pReferencia);
+      if (typeof pTipoDir === "string") {
+        const t = Number(pTipoDir);
+        if (Number.isFinite(t) && t > 0) setTipoDireccion(t);
+      }
+    }
+  }, [editMode, pNombreDir, pReferencia, pTipoDir]);
+
+  // Setear coloniaId desde params (nombre se resuelve al cargar lista)
+  useEffect(() => {
+    if (targetColoniaId && !coloniaId) {
+      setColoniaId(targetColoniaId);
+    }
+  }, [targetColoniaId, coloniaId]);
 
   // --- selector de colonias ---
   const [selectorOpen, setSelectorOpen] = useState(false);
@@ -95,15 +144,41 @@ export default function AddressFormScreen() {
   const [hasMore, setHasMore] = useState(true);
   const pageSize = 30;
 
+  const flatListRef = useRef<FlatList<Colonia> | null>(null);
+
+  // control anti-duplicado de requests
+  const lastQueryRef = useRef<string>("");
+
+  // Prefetch al entrar (una sola vez)
+  useEffect(() => {
+    (async () => {
+      if (items.length > 0) return;
+      await loadColonias(0, "", true);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // --- confirm modal / saving ---
   const [showConfirm, setShowConfirm] = useState(false);
-  const [saving, setSaving] = useState(false); // 👈 usar para bloquear inputs
-  const [tipoDireccion, setTipoDireccion] = useState(1); // 1=Casa por defecto
+  const [saving, setSaving] = useState(false);
+
+  // --- confirmación al salir ---
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const onPressBack = () => {
+    if (saving) return;
+    setShowExitConfirm(true);
+  };
+  const confirmExit = () => {
+    setShowExitConfirm(false);
+    router.replace("/address");
+  };
+  const cancelExit = () => setShowExitConfirm(false);
 
   // debounce search
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onChangeSearch = (txt: string) => {
     setSearch(txt);
+    setAutoFinding(false); // evita seguir autopaginando si el user escribe
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setOffset(0);
@@ -115,6 +190,11 @@ export default function AddressFormScreen() {
 
   const loadColonias = useCallback(
     async (nextOffset?: number, term?: string, replace = false) => {
+      // evita llamadas duplicadas para la misma key mientras está cargando
+      const key = JSON.stringify({ term: term ?? search, nextOffset: nextOffset ?? offset, replace });
+      if (lastQueryRef.current === key && loading) return;
+      lastQueryRef.current = key;
+
       if (loading || (!hasMore && !replace)) return;
       setLoading(true);
       setErrorMsg(null);
@@ -140,20 +220,60 @@ export default function AddressFormScreen() {
     [loading, hasMore, offset, search]
   );
 
+  // Auto-asignar colonia y nombre cuando aparezca en items
+  const [autoFinding, setAutoFinding] = useState(false);
   useEffect(() => {
-    if (selectorOpen) {
-      setItems([]);
-      setSearch("");
-      setOffset(0);
-      setHasMore(true);
-      setErrorMsg(null);
-      loadColonias(0, "", true);
+    // ⚠️ No autopaginar si el selector está abierto o si hay búsqueda activa
+    if (!coloniaId || selectorOpen || (search && search.trim().length > 0)) return;
+
+    const found = items.find((c) => c.id_colonia === coloniaId);
+    if (found) {
+      if (!colonia) setColonia(found.nombre_colonia);
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    if (!loading && hasMore && !autoFinding) {
+      setAutoFinding(true);
+      setTimeout(async () => {
+        await loadColonias(offset);
+        setAutoFinding(false);
+      }, 0);
+    }
+  }, [
+    items,
+    coloniaId,
+    hasMore,
+    loading,
+    offset,
+    colonia,
+    referencia,
+    loadColonias,
+    autoFinding,
+    selectorOpen,
+    search,
+  ]);
+
+  // 🆕 Al abrir el selector NO hagas fetch, solo limpia la búsqueda para mostrar lo que ya hay
+  useEffect(() => {
+    if (!selectorOpen) return;
+    setSearch("");
   }, [selectorOpen]);
 
+  // Cuando items cambie y el selector esté abierto, intenta scrollear al seleccionado
+  useEffect(() => {
+    if (!selectorOpen || !coloniaId) return;
+    const idx = items.findIndex((c) => c.id_colonia === coloniaId);
+    if (idx >= 0 && flatListRef.current) {
+      requestAnimationFrame(() => {
+        try {
+          flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+        } catch {}
+      });
+    }
+  }, [items, selectorOpen, coloniaId]);
+
   const handleSelectColonia = (item: Colonia) => {
-    if (saving) return; // 👈 prevenimos toques mientras guarda
+    if (saving) return;
     setColonia(item.nombre_colonia);
     setColoniaId(item.id_colonia);
     if (!referencia && item.referencia) setReferencia(item.referencia);
@@ -162,32 +282,19 @@ export default function AddressFormScreen() {
 
   // --- abrir modal de confirmación desde el botón Guardar ---
   const handleSave = () => {
-    if (saving) return; // 👈 evitar doble tap
+    if (saving) return;
     setShowConfirm(true);
   };
 
-  // --- acción confirmada: hace POST y navega ---
+  // --- acción confirmada: CREA o ACTUALIZA y navega ---
   const confirmAndCreate = async () => {
     if (saving) return;
-    setSaving(true); // 👈 activa bloqueo
+    setSaving(true);
 
     try {
-      const uid = userId ?? null; // Auth UID
-      const clienteId = profile?.id ?? null; // id en tbl_usuarios
+      const uid = userId ?? null;
       const latitud = coords.latitude ?? null;
       const longitud = coords.longitude ?? null;
-
-      console.log({
-        uid,
-        clienteId,
-        tipoDireccion,
-        nombreDireccion,
-        coloniaId,
-        colonia,
-        referencia,
-        latitud,
-        longitud,
-      });
 
       if (!uid) throw new Error("No hay usuario autenticado (uid).");
       if (latitud == null || longitud == null) {
@@ -197,24 +304,46 @@ export default function AddressFormScreen() {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
 
-      // POST a tu API
-      const res = await crearDireccion(
-        {
-          uid,
-          latitude: latitud,
-          longitude: longitud,
-          id_colonia: coloniaId ?? null,
-          nombre_direccion: nombreDireccion,
-          isPrincipal: true, // o según tu UX
-          referencia: referencia || null,
-          enforceSinglePrincipal: true,
-          tipo_direccion: tipoDireccion,
-        },
-        token
-      );
+      const idNum = id_direccion ? Number(id_direccion) : NaN;
 
-      if (!res.ok) {
-        throw new Error(res.message || "No se pudo crear la dirección.");
+      if (editMode && Number.isFinite(idNum) && idNum > 0) {
+        // 🔄 Actualizar
+        const res = await actualizarDireccion(
+          {
+            id_direccion: idNum,
+            nombre_direccion: nombreDireccion || null,
+            latitude: latitud,
+            longitude: longitud,
+            referencia: referencia || null,
+            tipo_direccion: tipoDireccion,
+            id_colonia: coloniaId ?? null,
+          },
+          token
+        );
+
+        if (!res.ok) {
+          throw new Error(res.message || "No se pudo actualizar la dirección.");
+        }
+      } else {
+        // 🆕 Crear
+        const res = await crearDireccion(
+          {
+            uid,
+            latitude: latitud,
+            longitude: longitud,
+            id_colonia: coloniaId ?? null,
+            nombre_direccion: nombreDireccion || null,
+            isPrincipal: true,
+            referencia: referencia || null,
+            enforceSinglePrincipal: true,
+            tipo_direccion: tipoDireccion,
+          },
+          token
+        );
+
+        if (!res.ok) {
+          throw new Error(res.message || "No se pudo crear la dirección.");
+        }
       }
 
       setShowConfirm(false);
@@ -222,7 +351,7 @@ export default function AddressFormScreen() {
     } catch (err: any) {
       Alert.alert("Error", err?.message ?? "Ocurrió un error al guardar la dirección.");
     } finally {
-      setSaving(false); // 👈 libera bloqueo
+      setSaving(false);
     }
   };
 
@@ -237,7 +366,7 @@ export default function AddressFormScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={[styles.backButton, saving && { opacity: 0.5 }]}
-          onPress={() => !saving && navigation.goBack()} // 👈 bloquea back tap
+          onPress={onPressBack}   // 👈 usar modal en vez de goBack
           activeOpacity={0.7}
           disabled={saving}
         >
@@ -259,12 +388,14 @@ export default function AddressFormScreen() {
               contentContainerStyle={styles.scroll}
               keyboardShouldPersistTaps="handled"
             >
-              <Text style={styles.title}>Nueva dirección</Text>
+              <Text style={styles.title}>
+                {editMode ? "Editar dirección" : "Nueva dirección"}
+              </Text>
 
               <AddressTypeSelector
                 value={tipoDireccion}
                 onChange={(next) => !saving && setTipoDireccion(next)}
-                disabled={saving} // 👈
+                disabled={saving}
               />
 
               {/* Nombre dirección */}
@@ -276,7 +407,7 @@ export default function AddressFormScreen() {
                 value={nombreDireccion}
                 onChangeText={setNombreDireccion}
                 returnKeyType="next"
-                editable={!saving} // 👈
+                editable={!saving}
               />
 
               {/* Colonia */}
@@ -284,7 +415,7 @@ export default function AddressFormScreen() {
               <TouchableOpacity
                 style={[styles.selector, saving && { opacity: 0.6 }]}
                 onPress={() => !saving && setSelectorOpen(true)}
-                disabled={saving} // 👈
+                disabled={saving}
                 activeOpacity={0.8}
               >
                 <Text
@@ -310,7 +441,7 @@ export default function AddressFormScreen() {
                 onChangeText={setReferencia}
                 textAlignVertical="top"
                 blurOnSubmit={false}
-                editable={!saving} // 👈
+                editable={!saving}
               />
 
               {/* Botón guardar */}
@@ -320,12 +451,14 @@ export default function AddressFormScreen() {
                   saving && { opacity: 0.7 },
                 ]}
                 onPress={handleSave}
-                disabled={saving} // 👈
+                disabled={saving}
               >
                 {saving ? (
                   <ActivityIndicator />
                 ) : (
-                  <Text style={styles.saveButtonText}>Guardar dirección</Text>
+                  <Text style={styles.saveButtonText}>
+                    {editMode ? "Guardar cambios" : "Guardar dirección"}
+                  </Text>
                 )}
               </TouchableOpacity>
             </ScrollView>
@@ -408,33 +541,75 @@ export default function AddressFormScreen() {
             </View>
           ) : (
             <FlatList
+              ref={flatListRef}
               data={items}
+              extraData={coloniaId}
               keyExtractor={(item) => String(item.id_colonia)}
               contentContainerStyle={{ paddingBottom: 20 }}
               ItemSeparatorComponent={() => (
                 <View style={{ height: 1, backgroundColor: "#f3f4f6", marginLeft: 12 }} />
               )}
-              renderItem={({ item }) => (
-                <Pressable
-                  onPress={() => handleSelectColonia(item)}
-                  style={({ pressed }) => [
-                    {
-                      paddingVertical: 12,
-                      paddingHorizontal: 16,
-                      backgroundColor: pressed ? "#f9fafb" : "#fff",
-                    },
-                  ]}
-                >
-                  <Text style={{ fontSize: 14, color: "#111827", fontWeight: "600" }}>
-                    {item.nombre_colonia}
-                  </Text>
-                  {item.referencia ? (
-                    <Text style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-                      {item.referencia}
-                    </Text>
-                  ) : null}
-                </Pressable>
-              )}
+              renderItem={({ item }) => {
+                const isSelected = item.id_colonia === coloniaId;
+                return (
+                  <Pressable
+                    onPress={() => handleSelectColonia(item)}
+                    style={({ pressed }) => [
+                      {
+                        paddingVertical: 12,
+                        paddingHorizontal: 16,
+                        backgroundColor: pressed
+                          ? "#f9fafb"
+                          : isSelected
+                          ? "#fffbeb"
+                          : "#fff",
+                        borderLeftWidth: isSelected ? 3 : 0,
+                        borderLeftColor: isSelected ? "#f59e0b" : "transparent",
+                      },
+                    ]}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          color: "#111827",
+                          fontWeight: "600",
+                          flex: 1,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {item.nombre_colonia}
+                      </Text>
+
+                      {isSelected && (
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            backgroundColor: "#fef3c7",
+                            borderColor: "#fde68a",
+                            borderWidth: 1,
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            borderRadius: 999,
+                          }}
+                        >
+                          <Ionicons name="checkmark-circle" size={16} color="#f59e0b" />
+                          <Text style={{ marginLeft: 4, fontSize: 12, color: "#92400e", fontWeight: "700" }}>
+                            Seleccionada
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {item.referencia ? (
+                      <Text style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }} numberOfLines={2}>
+                        {item.referencia}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                );
+              }}
               ListFooterComponent={
                 <View style={{ paddingVertical: 16 }}>
                   {loading ? (
@@ -470,16 +645,32 @@ export default function AddressFormScreen() {
         </SafeAreaView>
       </Modal>
 
-      {/* -------- Modal de confirmación -------- */}
+      {/* -------- Modal de confirmación GUARDAR -------- */}
       <ConfirmModal
         visible={showConfirm}
-        title="Confirmar nueva dirección"
-        message="¿Deseas guardar esta dirección como principal?"
+        title={editMode ? "Confirmar cambios" : "Confirmar nueva dirección"}
+        message={
+          editMode
+            ? "¿Deseas guardar los cambios de esta dirección como principal?"
+            : "¿Deseas guardar esta dirección como principal?"
+        }
         icon="help-circle"
-        confirmText={saving ? "Guardando..." : "Sí, guardar"}
+        confirmText={saving ? "Guardando..." : editMode ? "Sí, guardar cambios" : "Sí, guardar"}
         cancelText="Cancelar"
-        onCancel={() => !saving && setShowConfirm(false)} // 👈 bloquea cerrar mientras guarda
+        onCancel={() => !saving && setShowConfirm(false)}
         onConfirm={confirmAndCreate}
+      />
+
+      {/* -------- Modal de confirmación SALIR -------- */}
+      <ConfirmModal
+        visible={showExitConfirm}
+        title="¿Salir de esta pantalla?"
+        message="Si regresas ahora perderás los cambios no guardados."
+        icon="alert-circle"
+        confirmText="Sí, salir"
+        cancelText="Cancelar"
+        onConfirm={confirmExit}
+        onCancel={cancelExit}
       />
     </SafeAreaView>
   );
@@ -548,8 +739,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   saveButtonText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-
-  // Overlay que bloquea toda interacción mientras saving = true
   blockOverlay: {
     position: "absolute",
     left: 0,

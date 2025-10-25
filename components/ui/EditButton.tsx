@@ -23,7 +23,7 @@ export const EditButton: React.FC<EditButtonProps> = ({
     if (onPress) {
       onPress();
     } else {
-      console.log("Botón presionado");
+  
     }
   };
 

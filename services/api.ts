@@ -496,17 +496,86 @@ export async function fetchDireccionPrincipal(
 export async function eliminarDireccion(id: number) {
   const t0 = Date.now();
   const url = `/api/direcciones?id=${id}`;
-  console.log("[eliminarDireccion] start ->", { id, url });
+
 
   try {
     const resp = await apiFetch<{ message?: string; deletedId: number }>(url, { method: "DELETE" });
-    console.log("[eliminarDireccion] OK <-", { resp, durationMs: Date.now() - t0 });
+   
     return { ok: true as const, deletedId: resp.deletedId };
   } catch (error: any) {
-    console.log("[eliminarDireccion] CATCH <-", {
-      status: error?.status, url: error?.url, body: error?.body, message: error?.message,
-      durationMs: Date.now() - t0,
-    });
+   
     return { ok: false as const, message: error?.message ?? "No se pudo eliminar la dirección.", status: error?.status };
+  }
+}
+
+// --------- Direcciones: leer por id_direccion --------------------------
+export async function fetchDireccionById(
+  id_direccion: number,
+  token?: string
+): Promise<Direccion | null> {
+  if (!Number.isFinite(id_direccion) || id_direccion <= 0) {
+    console.warn("fetchDireccionById: id_direccion inválido:", id_direccion);
+    return null;
+  }
+
+  try {
+    const data = await apiFetch<Direccion>(`/api/direcciones/${id_direccion}`, {
+      headers: { ...withAuthHeader(token) },
+    });
+    return data ?? null;
+  } catch (error: any) {
+    // Si la API devuelve 404, normalizamos a null (no encontrada)
+    if (error?.status === 404) return null;
+    console.error("Error fetchDireccionById:", error);
+    return null;
+  }
+}
+
+
+// --------- Direcciones: actualizar (PUT) -------------------------------
+export type ActualizarDireccionPayload = {
+  id_direccion: number;             // requerido (se envía también en query ?id=)
+  nombre_direccion?: string | null;
+  latitude?: number;
+  longitude?: number;
+  referencia?: string | null;
+  tipo_direccion?: number;
+  id_colonia?: number | null;
+};
+
+export type ActualizarDireccionResult =
+  | { ok: true; direccion: DireccionRow }
+  | { ok: false; message: string; status?: number };
+
+/**
+ * Actualiza una dirección llamando a PUT /api/direcciones.
+ * - Envía el id por query (?id=) y también en el body (por compatibilidad).
+ * - Solo los campos presentes en el body serán actualizados por el backend.
+ */
+export async function actualizarDireccion(
+  payload: ActualizarDireccionPayload,
+  token?: string
+): Promise<ActualizarDireccionResult> {
+  try {
+    if (!payload?.id_direccion || !Number.isFinite(payload.id_direccion)) {
+      return { ok: false, message: "id_direccion inválido." };
+    }
+
+    const qs = new URLSearchParams({ id: String(payload.id_direccion) }).toString();
+
+    const data = await apiFetch<DireccionRow>(`/api/direcciones?${qs}`, {
+      method: "PUT",
+      headers: { ...withAuthHeader(token) },
+      body: payload, // el backend sólo actualizará las props definidas
+    });
+
+    return { ok: true, direccion: data };
+  } catch (error: any) {
+    console.error("Error actualizarDireccion:", error);
+    return {
+      ok: false,
+      message: error?.message ?? "No se pudo actualizar la dirección.",
+      status: error?.status,
+    };
   }
 }

@@ -2,10 +2,12 @@
 import { MapSkeleton } from "@/components";
 import AlertModal from "@/components/ui/AlertModal";
 import Button from "@/components/ui/Button";
+import ConfirmModal from "@/components/ui/ConfirmModal"; // 👈 importa tu modal
+import { fetchDireccionById } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   StatusBar,
@@ -17,14 +19,30 @@ import {
 import MapView, { Region } from "react-native-maps";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+type Params = { isEdit?: string; id_direccion?: string };
+
+type Prefill = {
+  id_direccion: number;
+  id_colonia: number | null;
+  nombre_direccion: string | null;
+  referencia: string | null;
+  tipo_direccion: number;
+  latitude: number;
+  longitude: number;
+} | null;
+
 export default function SetAddressScreen() {
   const navigation = useNavigation();
   const mapRef = useRef<MapView | null>(null);
+  const { isEdit, id_direccion } = useLocalSearchParams<Params>();
 
   const [loading, setLoading] = useState(true);
   const [showInstructions, setShowInstructions] = useState(true);
+  const [showExitConfirm, setShowExitConfirm] = useState(false); // 👈 para el ConfirmModal
 
-  // Región visible del mapa
+  const [prefill, setPrefill] = useState<Prefill>(null);
+
+  // Región visible del mapa (fallback inicial)
   const [region, setRegion] = useState<Region>({
     latitude: 14.0723,
     longitude: -87.1921,
@@ -35,66 +53,123 @@ export default function SetAddressScreen() {
   // Coordenadas del centro del mapa (pin fijo)
   const [selectedCoord, setSelectedCoord] = useState<{ latitude: number; longitude: number } | null>(null);
 
+  const editMode =
+    isEdit === "1" || isEdit?.toLowerCase() === "true" || isEdit === "yes";
+
+  // Centrar mapa y fijar pin
+  const centerMap = (lat: number, lng: number, animate = true) => {
+    const close: Region = {
+      latitude: lat,
+      longitude: lng,
+      latitudeDelta: 0.0035,
+      longitudeDelta: 0.0035,
+    };
+    setRegion(close);
+    setSelectedCoord({ latitude: lat, longitude: lng });
+    if (animate) requestAnimationFrame(() => mapRef.current?.animateToRegion(close, 400));
+  };
+
+  // Carga inicial
   useEffect(() => {
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setLoading(false);
-        setShowInstructions(true);
-        return;
-      }
-
       try {
+        const idNum = id_direccion ? Number(id_direccion) : NaN;
+
+        if (editMode && Number.isFinite(idNum) && idNum > 0) {
+          const dir = await fetchDireccionById(idNum);
+          if (dir?.latitude != null && dir?.longitude != null) {
+            centerMap(Number(dir.latitude), Number(dir.longitude));
+            setPrefill({
+              id_direccion: idNum,
+              id_colonia: dir.id_colonia != null ? Number(dir.id_colonia) : null,
+              nombre_direccion: dir.nombre_direccion ?? null,
+              referencia: dir.referencia ?? null,
+              tipo_direccion: Number(dir.tipo_direccion),
+              latitude: Number(dir.latitude),
+              longitude: Number(dir.longitude),
+            });
+            setLoading(false);
+            setShowInstructions(true);
+            return;
+          }
+        }
+
+        // Fallback: ubicación del usuario
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          setLoading(false);
+          setShowInstructions(true);
+          return;
+        }
+
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-        const { latitude, longitude } = pos.coords;
-
-        const close: Region = {
-          latitude,
-          longitude,
-          latitudeDelta: 0.0035, // zoom cerca
-          longitudeDelta: 0.0035,
-        };
-
-        setRegion(close);
-        setSelectedCoord({ latitude, longitude });
+        centerMap(pos.coords.latitude, pos.coords.longitude);
         setLoading(false);
         setShowInstructions(true);
-
-        requestAnimationFrame(() => mapRef.current?.animateToRegion(close, 400));
       } catch {
         setLoading(false);
         setShowInstructions(true);
       }
     })();
-  }, []);
+  }, [editMode, id_direccion]);
 
   const handleRegionChangeComplete = (r: Region) => {
     setRegion(r);
     setSelectedCoord({ latitude: r.latitude, longitude: r.longitude });
-
   };
 
-const handleContinue = () => {
-  if (!selectedCoord) return;
+  const handleContinue = () => {
+    if (!selectedCoord) return;
 
-  router.push({
-    pathname: "/new_address",
-    params: {
+    const params: Record<string, string> = {
       lat: String(selectedCoord.latitude),
       lng: String(selectedCoord.longitude),
-    },
-  });
-};
+      isEdit: editMode ? "1" : "0",
+    };
 
-  const PIN_SIZE = 44; // ajusta el tamaño del pin si lo quieres más grande/pequeño
+    if (editMode && prefill) {
+      params.id_direccion = String(prefill.id_direccion);
+      if (prefill.nombre_direccion != null) params.nombre_direccion = String(prefill.nombre_direccion);
+      if (prefill.referencia != null) params.referencia = String(prefill.referencia);
+      params.tipo_direccion = String(prefill.tipo_direccion);
+      if (prefill.id_colonia != null && Number.isFinite(prefill.id_colonia)) {
+        params.id_colonia = String(prefill.id_colonia);
+      }
+    }
+
+    router.push({ pathname: "/new_address", params });
+  };
+
+  // Back: abre confirmación en vez de goBack()
+  const onPressBack = () => {
+    setShowExitConfirm(true);
+  };
+
+  // Confirmar salida
+  const confirmExit = () => {
+    setShowExitConfirm(false);
+    // navega a /address (reemplaza para evitar volver a este screen con back)
+    router.replace("/address");
+  };
+
+  // Cancelar salida
+  const cancelExit = () => {
+    setShowExitConfirm(false);
+  };
+
+  const PIN_SIZE = 44;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
 
-      {/* Header (siempre visible) */}
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={onPressBack}           // 👈 abre confirmación
+          activeOpacity={0.7}
+        >
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
       </View>
@@ -124,13 +199,13 @@ const handleContinue = () => {
               />
             </View>
 
-            {/* Título/ayuda arriba */}
+            {/* Título/ayuda */}
             <View style={styles.overlayTitle}>
               <Text style={styles.text}>¿Dónde llevamos tu pedido?</Text>
               <Text style={styles.textLight}>Coloca el pin en la dirección exacta</Text>
             </View>
 
-            {/* Botón flotante centrado abajo */}
+            {/* Botón */}
             <View style={styles.fabWrap}>
               <Button
                 title="Continuar"
@@ -153,6 +228,18 @@ const handleContinue = () => {
         message={
           "Mueve el mapa para posicionar el marcador a la dirección deseada.\n\nTu pedido será entregado en la dirección que indiques."
         }
+      />
+
+      {/* Confirmación de salida */}
+      <ConfirmModal
+        visible={showExitConfirm}
+        title="¿Salir de esta pantalla?"
+        message="Si regresas ahora perderás los cambios no guardados."
+        icon="alert-circle"
+        confirmText="Sí, salir"
+        cancelText="Cancelar"
+        onConfirm={confirmExit}
+        onCancel={cancelExit}
       />
     </SafeAreaView>
   );
@@ -194,33 +281,12 @@ const styles = StyleSheet.create({
   text: { fontSize: 18, fontWeight: "600", color: "#1e293b", textAlign: "center" },
   textLight: { fontSize: 16, fontWeight: "400", color: "#475569", textAlign: "center", marginTop: 2 },
 
-  /* Skeleton */
-  skeletonContainer: {
-    flex: 1,
-    backgroundColor: "#f1f5f9",
-  },
-  skeletonMap: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#e2e8f0",
-  },
-  skeletonBadges: {
-    position: "absolute",
-    top: 16,
-    alignSelf: "center",
-    alignItems: "center",
-  },
-  skeletonBar: {
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: "#e5e7eb",
-  },
-
   /* Pin fijo */
   centerPinContainer: {
     position: "absolute",
     top: "50%",
     left: "50%",
-    marginLeft: -22, // la mitad de PIN_SIZE (ajusta si cambias PIN_SIZE)
+    marginLeft: -22, // la mitad de PIN_SIZE
     marginTop: -44,  // compensa la altura del icono para que la punta quede en el centro
     alignItems: "center",
     justifyContent: "center",

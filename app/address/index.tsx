@@ -6,9 +6,8 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/lib/supabase";
 import { Direccion, fetchDireccionesByUid } from "@/services/api";
-import { router } from "expo-router";
-
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -143,8 +142,7 @@ export default function AddressScreen() {
   // Confirmación del modal: de momento solo console.log
   const confirmUse = () => {
     if (selectedId != null) {
-      console.log("Cambiar dirección principal a id:", selectedId);
-      // Aquí luego puedes llamar a tu endpoint PATCH para setear principal,
+        // Aquí luego puedes llamar a tu endpoint PATCH para setear principal,
       // y tras éxito hacer fetchData(true)
     }
     setShowUseConfirm(false);

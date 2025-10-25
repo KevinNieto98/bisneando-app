@@ -11,11 +11,12 @@ interface Props {
   isVisible: boolean;
   onClose: () => void;
   id_direccion: number;
+  /** 👇 nuevo */
+  id_colonia?: number | null;
   tipo: number;
   nombre_direccion: string;
   referencia: string;
   iconName?: string;
-  /** NUEVO: callback para notificar que se borró */
   onDeleted?: (id: number) => void;
 }
 
@@ -25,11 +26,12 @@ export default function ModalDirecciones({
   isVisible,
   onClose,
   id_direccion,
+  id_colonia,            // 👈 nuevo
   tipo,
   nombre_direccion,
   referencia,
   iconName = "MapPin",
-  onDeleted, // 👈
+  onDeleted,
 }: Props) {
   const [confirm, setConfirm] = React.useState<{ visible: boolean; action: ConfirmAction }>({
     visible: false,
@@ -40,17 +42,25 @@ export default function ModalDirecciones({
   const closeConfirm = () => setConfirm({ visible: false, action: null });
 
   const handleConfirm = async () => {
-    console.log("ID de dirección:", id_direccion);
+
 
     if (confirm.action === "edit") {
-      router.push("/new_address");
+      const params: Record<string, string> = {
+        isEdit: "1",
+        id_direccion: String(id_direccion),
+        tipo_direccion: String(tipo),
+      };
+      if (id_colonia != null) params.id_colonia = String(id_colonia);
+      if (nombre_direccion) params.nombre_direccion = nombre_direccion;
+      if (referencia) params.referencia = referencia;
+
+      router.push({ pathname: "/set_address", params });
     }
 
     if (confirm.action === "delete") {
       const res = await eliminarDireccion(id_direccion);
       if (res.ok) {
-        console.log("Eliminada:", res.deletedId);
-        // 👇 Notifica al padre para refrescar y mostrar banner
+      
         onDeleted?.(res.deletedId);
       } else {
         alert(res.message);
@@ -58,7 +68,7 @@ export default function ModalDirecciones({
     }
 
     closeConfirm();
-    onClose(); // cerrar el modal
+    onClose();
   };
 
   const isEdit = confirm.action === "edit";
