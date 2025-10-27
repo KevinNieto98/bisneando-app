@@ -154,6 +154,7 @@ export default function LoginPage() {
                     value={email}
                     onChange={setEmail}
                     required
+                    placeholder="correo@ejemplo.com"
                     showError={emailError}
                     onTyping={() => setEmailError(false)}
                   />
@@ -164,6 +165,7 @@ export default function LoginPage() {
                     value={password}
                     onChange={setPassword}
                     required
+                     placeholder="••••••••"
                     showError={passwordError}
                     onTyping={() => setPasswordError(false)}
                   />

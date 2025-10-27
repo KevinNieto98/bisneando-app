@@ -1,13 +1,9 @@
+// components/cart/CartItem.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
-import {
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import QuantityStepper from "../ui/QuantityStepper";
 
 export type CartItemType = {
   id: number;
@@ -32,54 +28,52 @@ const toHNL = (n: number) =>
     maximumFractionDigits: 2,
   }).format(n);
 
-export const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
+const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
+  const maxQty = typeof item.inStock === "number" ? Math.max(0, item.inStock) : undefined;
+  const outOfStock = (maxQty ?? 1) <= 0;
+
+  const setQty = (next: number) => {
+    const clamped = Math.max(1, typeof maxQty === "number" ? Math.min(maxQty, next) : next);
+    onChangeQty(item.slug, clamped);
+  };
+
+  const goToDetail = () => router.push(`/product/${item.id}`);
+
   return (
     <Pressable
-      style={({ pressed }) => [styles.item, pressed && { opacity: 0.8 }]}
-      onPress={() => router.push(`/product/${item.id}`)} // 👉 lleva al detalle
+      style={({ pressed }) => [styles.item, pressed && { opacity: 0.9 }]}
+      onPress={goToDetail}
     >
       {/* Imagen */}
       <Image
-        source={{
-          uri: item.images?.[0] || "https://via.placeholder.com/150",
-        }}
+        source={{ uri: item.images?.[0] || "https://via.placeholder.com/150" }}
         style={styles.image}
       />
 
-      {/* Info */}
+      {/* Centro: título, stock, contador + eliminar */}
       <View style={styles.info}>
         <Text numberOfLines={2} style={styles.itemTitle}>
           {item.title}
         </Text>
-        <Text style={styles.stock}>
-          {item.inStock && item.inStock > 0
-            ? `En stock: ${item.inStock}`
-            : "Sin stock"}
+
+        <Text style={[styles.stock, outOfStock && styles.stockDanger]}>
+          {typeof item.inStock === "number"
+            ? item.inStock > 0
+              ? `En stock: ${item.inStock}`
+              : "Sin stock"
+            : "Stock no especificado"}
         </Text>
 
-        {/* Controles */}
         <View style={styles.controls}>
-          <Pressable
-            style={styles.qtyBtn}
-            onPress={(e) => {
-              e.stopPropagation(); // 👈 evita que dispare la navegación
-              onChangeQty(item.slug, Math.max(1, item.quantity - 1));
-            }}
-          >
-            <Text>-</Text>
-          </Pressable>
-
-          <Text>{item.quantity}</Text>
-
-          <Pressable
-            style={styles.qtyBtn}
-            onPress={(e) => {
-              e.stopPropagation();
-              onChangeQty(item.slug, item.quantity + 1);
-            }}
-          >
-            <Text>+</Text>
-          </Pressable>
+          <QuantityStepper
+            value={item.quantity}
+            onChange={setQty}
+            min={1}
+            max={maxQty}
+            size="md"
+            disabled={outOfStock}
+            stopPropagation
+          />
 
           <Pressable
             style={styles.removeBtn}
@@ -87,50 +81,72 @@ export const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
               e.stopPropagation();
               onRemove(item.slug);
             }}
+            android_ripple={{ color: "rgba(0,0,0,0.06)" }}
+            accessibilityRole="button"
+            accessibilityLabel="Quitar del carrito"
           >
-            <Ionicons name="trash-outline" size={18} color="red" />
+            <Ionicons name="trash-outline" size={18} color="#dc2626" />
           </Pressable>
         </View>
       </View>
 
-      {/* Precio */}
-      <Text style={styles.price}>{toHNL(item.price)}</Text>
+      {/* Derecha: precio (unidad) y subtotal */}
+      <View style={styles.priceWrap}>
+        <Text style={styles.priceUnit}>{toHNL(item.price)}</Text>
+        <Text style={styles.priceSubtotal}>{toHNL(item.price * item.quantity)}</Text>
+      </View>
     </Pressable>
   );
 };
+
+export default CartItem;
 
 const styles = StyleSheet.create({
   item: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderColor: "#e5e7eb",
   },
-  image: { width: 70, height: 70, borderRadius: 8 },
-  info: { flex: 1 },
-  itemTitle: { fontSize: 14, fontWeight: "600", marginBottom: 4 },
-  stock: { fontSize: 12, color: "gray" },
+  image: {
+    width: 70,
+    height: 70,
+    borderRadius: 8,
+    backgroundColor: "#f3f4f6",
+  },
+  info: { flex: 1, minHeight: 70, justifyContent: "space-between" },
+  itemTitle: { fontSize: 14, fontWeight: "600", color: "#111827" },
+  stock: { fontSize: 12, color: "#6b7280", marginTop: 2 },
+  stockDanger: { color: "#dc2626" },
+
   controls: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginTop: 6,
-  },
-  qtyBtn: {
-    borderWidth: 1,
-    borderColor: "#d4d4d8",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    gap: 10,
+    marginTop: 8,
   },
   removeBtn: {
-    marginLeft: 10,
+    marginLeft: 4,
     borderWidth: 1,
-    borderColor: "#d4d4d8",
-    borderRadius: 20,
-    padding: 4,
+    borderColor: "#e5e7eb",
+    borderRadius: 999,
+    padding: 6,
+    backgroundColor: "#fff",
   },
-  price: { fontWeight: "600", minWidth: 60, textAlign: "right" },
+
+  priceWrap: {
+    alignItems: "flex-end",
+    minWidth: 94,
+  },
+  priceUnit: {
+    fontWeight: "700",
+    color: "#111827",
+  },
+  priceSubtotal: {
+    marginTop: 2,
+    fontSize: 12,
+    color: "#6b7280",
+  },
 });

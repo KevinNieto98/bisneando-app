@@ -1,7 +1,26 @@
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
-export function ProductActions({ cantidad, setCantidad, onWhatsApp, onShare }: any) {
+type Props = {
+  cantidad: number;
+  setCantidad: (n: number) => void;
+  onWhatsApp: () => void;
+  onShare: () => void;
+  /** Stock máximo permitido; si es 0 o menor, el stepper queda deshabilitado */
+  maxQty?: number;
+};
+
+export function ProductActions({
+  cantidad,
+  setCantidad,
+  onWhatsApp,
+  onShare,
+  maxQty = 0,
+}: Props) {
+  const atMin = cantidad <= 1;
+  const atMax = maxQty > 0 ? cantidad >= maxQty : false;
+  const disabled = maxQty <= 0;
+
   return (
     <View style={styles.counterRow}>
       {/* WhatsApp */}
@@ -14,22 +33,36 @@ export function ProductActions({ cantidad, setCantidad, onWhatsApp, onShare }: a
         <Ionicons name="share-social" size={20} color="#2563eb" />
       </TouchableOpacity>
 
-      {/* Counter */}
+      {/* Counter (mismas dimensiones/estilos) */}
       <View style={styles.counterContainer}>
         <TouchableOpacity
           style={styles.counterButton}
-          onPress={() => setCantidad(Math.max(1, cantidad - 1))}
+          onPress={() => {
+            if (!atMin && !disabled) setCantidad(cantidad - 1);
+          }}
+          disabled={atMin || disabled}
         >
-          <Ionicons name="remove" size={18} color="#000" />
+          <Ionicons
+            name="remove"
+            size={18}
+            color={atMin || disabled ? "#9ca3af" : "#000"}
+          />
         </TouchableOpacity>
 
         <Text style={styles.counterText}>{cantidad}</Text>
 
         <TouchableOpacity
           style={styles.counterButton}
-          onPress={() => setCantidad(cantidad + 1)}
+          onPress={() => {
+            if (!atMax && !disabled) setCantidad(cantidad + 1);
+          }}
+          disabled={atMax || disabled}
         >
-          <Ionicons name="add" size={18} color="#000" />
+          <Ionicons
+            name="add"
+            size={18}
+            color={atMax || disabled ? "#9ca3af" : "#000"}
+          />
         </TouchableOpacity>
       </View>
     </View>

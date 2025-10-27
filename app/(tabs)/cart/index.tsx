@@ -1,4 +1,5 @@
-import { CartItem } from "@/components/cart/CartItem";
+
+import CartItem from "@/components/cart/CartItem";
 import { CartSummary } from "@/components/cart/CartSummary";
 import { useAppStore } from "@/store/useAppStore";
 import { Ionicons } from "@expo/vector-icons";

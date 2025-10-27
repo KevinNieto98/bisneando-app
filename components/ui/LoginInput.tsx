@@ -1,7 +1,14 @@
 // components/ui/LoginInput.tsx
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState } from "react";
-import { StyleSheet, Text, TextInput, TextInputProps, TouchableOpacity, View } from "react-native";
+import React, { useMemo, useState } from "react";
+import {
+  StyleSheet,
+  Text,
+  TextInput,
+  TextInputProps,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 type Kind = "text" | "email" | "password" | "phone";
 
@@ -15,6 +22,8 @@ export interface LoginInputProps
   showError?: boolean;
   onTyping?: () => void;
   containerStyle?: any;
+  /** Muestra el aviso de mayúsculas en password (default: true) */
+  showCapsWarning?: boolean;
 }
 
 export default function LoginInput({
@@ -27,6 +36,7 @@ export default function LoginInput({
   onTyping,
   placeholder,
   containerStyle,
+  showCapsWarning = true,
   ...rest // aquí vendrán autoCapitalize, autoCorrect, etc.
 }: LoginInputProps) {
   const isPassword = type === "password";
@@ -44,6 +54,15 @@ export default function LoginInput({
 
   // Evita que secureTextEntry del caller pise nuestro control del ojito
   const { secureTextEntry: _ignoredSecure, ...restProps } = rest;
+
+  // --- Heurística CAPS (no podemos leer el estado real del Caps Lock) ---
+  const hasLetters = /[A-Za-zÁÉÍÓÚÑáéíóúñ]/.test(value);
+  const upperCount = useMemo(() => (value.match(/[A-ZÁÉÍÓÚÑ]/g) || []).length, [value]);
+  const lowerCount = useMemo(() => (value.match(/[a-záéíóúñ]/g) || []).length, [value]);
+
+  // Consideramos “CAPS activo” si predominan mayúsculas claramente y hay letras
+  const capsLooksOn =
+    showCapsWarning && isPassword && hasLetters && upperCount >= Math.max(1, lowerCount * 2);
 
   return (
     <View style={[styles.container, containerStyle]}>
@@ -70,6 +89,7 @@ export default function LoginInput({
           {...restProps}
         />
 
+        {/* Ojito */}
         {isPassword && (
           <TouchableOpacity
             onPress={() => setRevealed((v) => !v)}
@@ -83,7 +103,14 @@ export default function LoginInput({
         )}
       </View>
 
-      {showError ? <Text style={styles.helperError}>Campo requerido o inválido</Text> : null}
+      {/* Mensajes debajo, sin afectar el input */}
+      {showError ? (
+        <Text style={styles.helperError}>Campo requerido o inválido</Text>
+      ) : capsLooksOn ? (
+        <Text style={styles.helperWarn}>
+          <Ionicons name="alert-circle" size={12} /> Parece que tienes mayúsculas activas.
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -111,8 +138,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     fontSize: 16,
   },
+
+  // Deja espacio para el ojito y no se superpone nada
   inputWithIcon: {
-    paddingRight: 44, // deja espacio para el ojito
+    paddingRight: 44,
   },
 
   eyeButton: {
@@ -124,4 +153,5 @@ const styles = StyleSheet.create({
   },
 
   helperError: { marginTop: 6, color: "#dc2626", fontSize: 12 },
+  helperWarn: { marginTop: 6, color: "#a16207", fontSize: 12},
 });
