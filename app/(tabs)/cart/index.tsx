@@ -1,30 +1,21 @@
-
 import CartItem from "@/components/cart/CartItem";
 import { CartSummary } from "@/components/cart/CartSummary";
+import EmptyCart from "@/components/cart/EmptyCart"; // 👈 nuevo
 import { useAppStore } from "@/store/useAppStore";
+import { useCartStore, type CartItem as CartItemType } from "@/store/useCartStore";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import React, { useEffect, useMemo, useState } from "react";
+import { router } from "expo-router"; // 👈 para navegar desde EmptyCart
+import React, { useMemo } from "react";
 import {
   FlatList,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-type CartItemType = {
- id: number;  
-  slug: string;
-  title: string;
-  price: number;
-  images: string[];
-  brand?: string;
-  inStock?: number;
-  quantity: number;
-};
 
 const toHNL = (n: number) =>
   new Intl.NumberFormat("es-HN", {
@@ -33,45 +24,67 @@ const toHNL = (n: number) =>
     maximumFractionDigits: 2,
   }).format(n);
 
+// URL de respaldo por si no encontramos imagen
+const PLACEHOLDER =
+  "https://via.placeholder.com/300x300.png?text=Sin+imagen";
+
+// 🔧 Limpia y valida un array de imágenes (debe devolver string[])
+const ensureUrls = (arr: unknown): string[] => {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((u) => (typeof u === "string" ? u.trim() : ""))
+    .filter((u) => u.length > 0);
+};
+
 export default function CartScreen() {
   const navigation = useNavigation();
-  const { products, loadProducts } = useAppStore();
 
-  const [items, setItems] = useState<CartItemType[]>([]);
+  // 🛒 Carrito
+  const itemsRecord = useCartStore((s) => s.items);
+  const setQty = useCartStore((s) => s.setQty);
+  const remove = useCartStore((s) => s.remove);
+  const totalPrice = useCartStore((s) => s.totalPrice());
+  const totalItems = useCartStore((s) => s.totalItems());
 
-  // 🔄 Cargar productos
-  useEffect(() => {
-    loadProducts();
-  }, [loadProducts]);
+  // 🗂️ Productos (con imágenes normalizadas desde useAppStore)
+  const products = useAppStore((s) => s.products);
 
-  useEffect(() => {
-    if (products.length > 0) {
-      const withQty = products.map((p) => ({
-        ...p,
-        quantity: 1,
-        inStock: Math.floor(Math.random() * 10) + 1,
-      }));
-      setItems(withQty);
-    }
-  }, [products]);
-
-  const subtotal = useMemo(
-    () => items.reduce((sum, it) => sum + it.price * it.quantity, 0),
-    [items]
+  // Record -> array
+  const itemsRaw: CartItemType[] = useMemo(
+    () => Object.values(itemsRecord),
+    [itemsRecord]
   );
+
+  // ✅ Asegura que cada item tenga al menos 1 imagen válida:
+  //    1) usa las imágenes que ya están en el item (limpiadas),
+  //    2) si no hay, intenta tomarlas del catálogo por id,
+  //    3) si tampoco hay, usa placeholder.
+  const items: CartItemType[] = useMemo(() => {
+    const byId = new Map(products?.map((p) => [p.id, p]) ?? []);
+
+    return itemsRaw.map((it) => {
+      const cartImgs = ensureUrls(it.images);
+      if (cartImgs.length > 0) return { ...it, images: cartImgs };
+
+      const prod = byId.get(it.id);
+      const prodImgs = ensureUrls(prod?.images);
+      return {
+        ...it,
+        images: prodImgs.length > 0 ? prodImgs : [PLACEHOLDER],
+      };
+    });
+  }, [itemsRaw, products]);
+
+  const isEmpty = items.length === 0;
+
+  const subtotal = totalPrice;
   const shipping = 0;
   const taxes = 0;
   const total = subtotal + shipping + taxes;
 
-  const handleRemove = (slug: string) =>
-    setItems((prev) => prev.filter((it) => it.slug !== slug));
-
-  const handleChangeQty = (slug: string, nextQty: number) =>
-    setItems((prev) =>
-      prev.map((it) =>
-        it.slug === slug ? { ...it, quantity: Math.max(1, nextQty) } : it
-      )
-    );
+  const handleRemove = (id: number) => remove(id);
+  const handleChangeQty = (id: number, nextQty: number) =>
+    setQty(id, Math.max(1, nextQty));
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -91,14 +104,16 @@ export default function CartScreen() {
 
       {/* Contenido */}
       <View style={styles.content}>
-        {/* Lista scrollable */}
         <View style={styles.listContainer}>
-          {items.length === 0 ? (
-            <Text style={styles.empty}>Tu carrito está vacío.</Text>
+          {isEmpty ? (
+            <EmptyCart
+              onPrimaryPress={() => router.push("/")}           // ajusta la ruta
+              onSecondaryPress={() => router.push("/explore")} // ajusta la ruta
+            />
           ) : (
             <FlatList
               data={items}
-              keyExtractor={(item) => item.slug}
+              keyExtractor={(item) => String(item.id)}
               renderItem={({ item }) => (
                 <CartItem
                   item={item}
@@ -111,26 +126,25 @@ export default function CartScreen() {
           )}
         </View>
 
-        {/* Resumen fijo abajo */}
-        <View style={styles.summaryContainer}>
-          <CartSummary
-            subtotal={subtotal}
-            shipping={shipping}
-            taxes={taxes}
-            total={total}
-            toHNL={toHNL}
-          />
-        </View>
+        {/* Resumen fijo abajo (se oculta si está vacío) */}
+        {!isEmpty && (
+          <View style={styles.summaryContainer}>
+            <CartSummary
+              subtotal={subtotal}
+              shipping={shipping}
+              taxes={taxes}
+              total={total}
+              toHNL={toHNL}
+            />
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFD600",
-  },
+  container: { flex: 1, backgroundColor: "#FFD600" },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -138,35 +152,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 12,
   },
-  backButton: {
-    marginRight: 8,
-    padding: 6,
-    borderRadius: 20,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#000",
-  },
+  backButton: { marginRight: 8, padding: 6, borderRadius: 20 },
+  headerTitle: { fontSize: 18, fontWeight: "700", color: "#000" },
   content: {
     flex: 1,
     backgroundColor: "white",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
-  listContainer: {
-    flex: 1, // ocupa todo el espacio disponible
-  },
+  listContainer: { flex: 1 },
   summaryContainer: {
     padding: 16,
     borderTopWidth: 1,
     borderColor: "#e5e7eb",
     backgroundColor: "white",
-  },
-  empty: {
-    textAlign: "center",
-    color: "#6b7280",
-    fontSize: 14,
-    paddingVertical: 20,
   },
 });

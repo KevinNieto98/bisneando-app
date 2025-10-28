@@ -11,25 +11,48 @@ import { fetchProductoById } from "@/services/api";
 import { useAppStore } from "@/store/useAppStore";
 import { useCartStore } from "@/store/useCartStore";
 import * as Haptics from "expo-haptics";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { FlatList, StatusBar, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+type ProductAPI = {
+  id_producto: number | string;
+  slug?: string;
+  nombre_producto: string;
+  nombre_marca?: string;
+  precio: number | string;
+  qty?: number | string;          // stock
+  imagenes?: string[];            // urls
+  descripcion?: string;
+};
+
 export default function ProductScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [producto, setProducto] = useState<any | null>(null);
+  const routeId = id ? Number(id) : undefined;
+
+  const [producto, setProducto] = useState<ProductAPI | null>(null);
   const [loading, setLoading] = useState(true);
 
   // cantidad con clamp por stock
   const [cantidad, _setCantidad] = useState(1);
+
+  // 🛒 carrito
+  const addToCart = useCartStore((s) => s.add);
+  const setQtyStore = useCartStore((s) => s.setQty);
+  const itemsMap = useCartStore((s) => s.items);
+  const totalItems = useCartStore((s) => s.totalItems());
+  // 👉 línea del carrito para este producto (si ya fue agregado)
+  const cartLine = useCartStore((s) =>
+    routeId != null ? s.items[String(routeId)] : undefined
+  );
+
+  // Similares (si ya los cargas en AppStore)
   const products = useAppStore((state) => state.products);
 
   // Toast "agregado"
   const [addedVisible, setAddedVisible] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const addToCart = useCartStore((s) => s.add);
 
   const triggerAddedToast = (msg = "Agregado al carrito") => {
     try { Haptics.selectionAsync(); } catch {}
@@ -51,7 +74,11 @@ export default function ProductScreen() {
         const data = await fetchProductoById(Number(id));
         setProducto(data);
         const stock = Number(data?.qty ?? 0);
-        _setCantidad((prev) => (stock > 0 ? Math.min(prev, stock) : 1));
+
+        // 🔁 Al cargar, sincroniza cantidad con lo que ya hay en el carrito (si existe)
+        const inCartQty = cartLine?.quantity ?? 0;
+        const base = inCartQty > 0 ? inCartQty : 1;
+        _setCantidad(stock > 0 ? Math.min(base, stock) : 1);
       } finally {
         setLoading(false);
       }
@@ -60,7 +87,18 @@ export default function ProductScreen() {
     return () => {
       if (hideTimer.current) clearTimeout(hideTimer.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // 🪢 Si cambia la línea del carrito (por ejemplo, desde otra screen), reflejarlo
+  useEffect(() => {
+    if (!producto) return;
+    const stock = Number(producto.qty ?? 0);
+    const inCartQty = cartLine?.quantity ?? 0;
+    if (inCartQty > 0) {
+      _setCantidad(Math.min(inCartQty, stock || inCartQty));
+    }
+  }, [cartLine?.quantity, producto]);
 
   if (loading) return <ProductSkeleton />;
 
@@ -74,22 +112,36 @@ export default function ProductScreen() {
 
   const stock = Number(producto.qty ?? 0);
 
+  // Helper: mapea el producto del API al formato del carrito
+  const mapProductoToCart = (p: ProductAPI) => ({
+    id: Number(p.id_producto),
+    title: p.nombre_producto,
+    price: Number(p.precio),
+    images: p.imagenes ?? [],
+    inStock: Number(p.qty ?? 0) || undefined,
+  });
+
+  const idNum = Number(producto.id_producto);
+  const existsInCart = !!itemsMap[String(idNum)];
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
-      <ProductHeader />
+      <ProductHeader totalItems={totalItems} />
 
-      {/* Toast flotante */}
-      <SuccessToast visible={addedVisible} text="Agregado al carrito" autoHide autoHideMs={1400} onHide={() => setAddedVisible(false)} />
-
-      {/* Contenido */}
       <FlatList
         data={[]}
         keyExtractor={() => "dummy"}
-        renderItem={null}
+        renderItem={() => null}
         ListHeaderComponent={
           <View style={styles.content}>
-            <ProductCarousel imagenes={producto.imagenes} />
+            <SuccessToast
+              visible={addedVisible}
+              text="Agregado al carrito"
+              iconName="checkmark-circle-outline"
+            />
+
+            <ProductCarousel imagenes={producto.imagenes ?? []} />
 
             <ProductInfo
               marca={producto.nombre_marca?.toUpperCase?.() || ""}
@@ -105,32 +157,35 @@ export default function ProductScreen() {
             />
 
             <ProductPriceBox
-              precio={producto.precio}
+              precio={Number(producto.precio)}
               qty={stock}
               onAdd={() => {
                 if (cantidad > stock || stock <= 0) return;
 
-                addToCart(
-                  {
-                    id: Number(producto.id),
-                    slug: producto.slug || String(producto.id),
-                    title: producto.nombre_producto,
-                    price: Number(producto.precio),
-                    image: producto.imagenes?.[0] ?? null,
-                    maxQty: stock,
-                  },
-                  cantidad
-                );
+                // ✅ Si ya existe en carrito, ajusta a la cantidad exacta (no suma)
+                if (existsInCart) {
+                  setQtyStore(idNum, cantidad);
+                } else {
+                  addToCart(mapProductoToCart(producto), cantidad);
+                }
 
                 triggerAddedToast();
               }}
               onBuy={() => {
                 if (cantidad > stock || stock <= 0) return;
-                // TODO: compra directa (ej. navegar a checkout con producto + cantidad)
+
+                if (existsInCart) {
+                  setQtyStore(idNum, cantidad); // exacto
+                } else {
+                  addToCart(mapProductoToCart(producto), cantidad);
+                }
+
+                try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
+                router.push("/cart"); // ajusta la ruta si tu archivo vive en otra carpeta
               }}
             />
 
-            <ProductDescription descripcion={producto.descripcion} />
+            <ProductDescription descripcion={producto.descripcion ?? ""} />
 
             {products && products.length > 0 && (
               <View style={{ marginTop: 20 }}>

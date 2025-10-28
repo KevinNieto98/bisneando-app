@@ -4,26 +4,30 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 export type CartItem = {
   id: number;
-  slug: string;
   title: string;
   price: number;
-  image?: string | null;
-  quantity: number;   // en el carrito
-  maxQty?: number;    // stock (opcional)
+  images: string[];
+  quantity: number;
+  inStock?: number;
 };
 
 type CartState = {
-  items: Record<string, CartItem>; // key: slug
+  // key = String(id)
+  items: Record<string, CartItem>;
+
   // Selectores
-  totalItems: () => number;        // número de ítems (sum quantities)
-  totalLines: () => number;        // líneas distintas
-  totalPrice: () => number;        // total HNL
-  // Acciones
+  totalItems: () => number;
+  totalLines: () => number;
+  totalPrice: () => number;
+
+  // Acciones (reciben idKey = number|string)
   add: (item: Omit<CartItem, "quantity">, qty?: number) => void;
-  setQty: (slug: string, qty: number) => void;
-  remove: (slug: string) => void;
+  setQty: (idKey: number | string, qty: number) => void;
+  remove: (idKey: number | string) => void;
   clear: () => void;
 };
+
+const idKeyOf = (id: number | string) => String(id);
 
 export const useCartStore = create<CartState>()(
   persist(
@@ -40,21 +44,29 @@ export const useCartStore = create<CartState>()(
 
       add: (item, qty = 1) => {
         set((state) => {
-          const current = state.items[item.slug];
+          const key = idKeyOf(item.id);
+          const current = state.items[key];
           const nextQtyRaw = (current?.quantity ?? 0) + qty;
-          const max = typeof item.maxQty === "number" ? item.maxQty : Infinity;
+
+          const max =
+            typeof item.inStock === "number"
+              ? item.inStock
+              : typeof current?.inStock === "number"
+              ? current.inStock
+              : Infinity;
+
           const nextQty = Math.max(1, Math.min(nextQtyRaw, max));
 
           return {
             items: {
               ...state.items,
-              [item.slug]: {
+              [key]: {
                 id: item.id,
-                slug: item.slug,
                 title: item.title,
                 price: item.price,
-                image: item.image ?? current?.image ?? null,
-                maxQty: item.maxQty ?? current?.maxQty,
+                images: item.images?.length ? item.images : current?.images ?? [],
+                inStock:
+                  typeof item.inStock === "number" ? item.inStock : current?.inStock,
                 quantity: nextQty,
               },
             },
@@ -62,20 +74,24 @@ export const useCartStore = create<CartState>()(
         });
       },
 
-      setQty: (slug, qty) => {
+      setQty: (idKey, qty) => {
         set((state) => {
-          const it = state.items[slug];
+          const key = idKeyOf(idKey);
+          const it = state.items[key];
           if (!it) return state;
-          const max = typeof it.maxQty === "number" ? it.maxQty : Infinity;
+
+          const max = typeof it.inStock === "number" ? it.inStock : Infinity;
           const nextQty = Math.max(1, Math.min(qty, max));
-          return { items: { ...state.items, [slug]: { ...it, quantity: nextQty } } };
+
+          return { items: { ...state.items, [key]: { ...it, quantity: nextQty } } };
         });
       },
 
-      remove: (slug) => {
+      remove: (idKey) => {
         set((state) => {
+          const key = idKeyOf(idKey);
           const copy = { ...state.items };
-          delete copy[slug];
+          delete copy[key];
           return { items: copy };
         });
       },
@@ -83,12 +99,44 @@ export const useCartStore = create<CartState>()(
       clear: () => set({ items: {} }),
     }),
     {
-      name: "bisneando-cart-v1", // clave del storage
+      name: "bisneando-cart-v1",
       storage: createJSONStorage(() => AsyncStorage),
-      version: 1,
-      // (Opcional) migraciones si cambias estructura en el futuro
-      // migrate: async (persisted, version) => persisted,
-      // partialize: (state) => ({ items: state.items }), // guardar solo items si quieres
+      version: 5, // ⬆️ nueva versión sin slug
+      migrate: async (persisted: any, fromVersion: number) => {
+        // Reindexa por id y elimina 'slug' si existía
+        if (fromVersion < 5 && persisted?.state?.items) {
+          const oldItems: Record<string, any> = persisted.state.items;
+          const newItems: Record<string, CartItem> = {};
+          for (const [, it] of Object.entries(oldItems)) {
+            const id = Number(it.id);
+            const key = idKeyOf(id);
+            const images =
+              Array.isArray(it.images) ? it.images : it.image ? [it.image] : [];
+            const inStock =
+              typeof it.inStock === "number"
+                ? it.inStock
+                : typeof it.maxQty === "number"
+                ? it.maxQty
+                : undefined;
+
+            newItems[key] = {
+              id,
+              title: String(it.title),
+              price: Number(it.price),
+              images,
+              quantity: Number(it.quantity ?? 1),
+              inStock,
+            };
+          }
+          return {
+            ...persisted,
+            state: { ...persisted.state, items: newItems },
+            version: 5,
+          };
+        }
+        return persisted;
+      },
+      // partialize: (state) => ({ items: state.items }),
     }
   )
 );

@@ -60,10 +60,7 @@ export const ProductSlideItem: React.FC<Props> = ({ product, onAddToCart }) => {
             styles.cartButton,
             pressed && { opacity: 0.7 },
           ]}
-          onPress={(e) => {
-            e.stopPropagation(); // 👈 evita que dispare router.push
-            onAddToCart?.(product);
-          }}
+           onPress={() => router.push(`../product/${product.id}`)} 
         >
           <Ionicons name="cart-outline" size={18} color="white" />
           <Text style={styles.cartText}>Agregar</Text>

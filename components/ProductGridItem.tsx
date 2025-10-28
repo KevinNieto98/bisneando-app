@@ -72,7 +72,7 @@ export const ProductGridItem: React.FC<Props> = ({ product, onAddToCart }) => {
             styles.cartButton,
             pressed && { opacity: 0.7 },
           ]}
-          onPress={() => onAddToCart?.(product)}
+          onPress={() => router.push(`../product/${product.id}`)} 
         >
           <Ionicons name="cart-outline" size={12} color="white" />
           <Text style={styles.cartText}>+</Text>

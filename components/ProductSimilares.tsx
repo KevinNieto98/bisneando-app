@@ -14,6 +14,7 @@ import { ProductSlideItem } from "./ProductSlideItem";
 import Icono from "./ui/Icon.native";
 
 export interface Product {
+  id: number;
   slug: string;
   title: string;
   price: number;

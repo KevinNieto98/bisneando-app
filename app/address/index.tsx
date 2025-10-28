@@ -139,7 +139,7 @@ export default function AddressScreen() {
     setShowUseConfirm(true);
   };
 
-  // Confirmación del modal: de momento solo console.log
+
   const confirmUse = () => {
     if (selectedId != null) {
         // Aquí luego puedes llamar a tu endpoint PATCH para setear principal,

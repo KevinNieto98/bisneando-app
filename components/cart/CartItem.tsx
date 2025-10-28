@@ -1,4 +1,3 @@
-// components/cart/CartItem.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
@@ -7,7 +6,6 @@ import QuantityStepper from "../ui/QuantityStepper";
 
 export type CartItemType = {
   id: number;
-  slug: string;
   title: string;
   price: number;
   images: string[];
@@ -17,8 +15,8 @@ export type CartItemType = {
 
 interface Props {
   item: CartItemType;
-  onChangeQty: (slug: string, qty: number) => void;
-  onRemove: (slug: string) => void;
+  onChangeQty: (id: number, qty: number) => void;
+  onRemove: (id: number) => void;
 }
 
 const toHNL = (n: number) =>
@@ -29,12 +27,15 @@ const toHNL = (n: number) =>
   }).format(n);
 
 const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
-  const maxQty = typeof item.inStock === "number" ? Math.max(0, item.inStock) : undefined;
+
+  const maxQty =
+    typeof item.inStock === "number" ? Math.max(0, item.inStock) : undefined;
   const outOfStock = (maxQty ?? 1) <= 0;
 
   const setQty = (next: number) => {
-    const clamped = Math.max(1, typeof maxQty === "number" ? Math.min(maxQty, next) : next);
-    onChangeQty(item.slug, clamped);
+    const clamped =
+      Math.max(1, typeof maxQty === "number" ? Math.min(maxQty, next) : next);
+    onChangeQty(item.id, clamped);
   };
 
   const goToDetail = () => router.push(`/product/${item.id}`);
@@ -79,7 +80,7 @@ const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
             style={styles.removeBtn}
             onPress={(e) => {
               e.stopPropagation();
-              onRemove(item.slug);
+              onRemove(item.id);
             }}
             android_ripple={{ color: "rgba(0,0,0,0.06)" }}
             accessibilityRole="button"
@@ -93,7 +94,9 @@ const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
       {/* Derecha: precio (unidad) y subtotal */}
       <View style={styles.priceWrap}>
         <Text style={styles.priceUnit}>{toHNL(item.price)}</Text>
-        <Text style={styles.priceSubtotal}>{toHNL(item.price * item.quantity)}</Text>
+        <Text style={styles.priceSubtotal}>
+          {toHNL(item.price * item.quantity)}
+        </Text>
       </View>
     </Pressable>
   );
