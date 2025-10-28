@@ -21,15 +21,21 @@ const pastelColors = [
 const CategorySection: React.FC<Props> = ({ categories }) => {
   const router = useRouter();
 
+  const goToExplore = (categoryId?: number) => {
+    router.push({
+      pathname: "/(tabs)/explore", // 👈 ajusta si tu ruta difiere
+      params: categoryId != null ? { categoryId: String(categoryId) } : {},
+    });
+  };
+
   return (
     <View style={{ marginTop: 6, paddingBottom: 5 }}>
       <FlatList
         data={categories}
-
         horizontal
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item.id_categoria.toString()}
-        contentContainerStyle={{ paddingHorizontal: 10,  paddingBottom: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 1 }}
         renderItem={({ item, index }) => {
           const bgColor = pastelColors[index % pastelColors.length];
 
@@ -42,7 +48,7 @@ const CategorySection: React.FC<Props> = ({ categories }) => {
                   transform: [{ scale: pressed ? 0.96 : 1 }],
                 },
               ]}
-            // onPress={() => router.push(`/category/${item.id_categoria}`)}
+              onPress={() => goToExplore(item.id_categoria)} // 👈 manda la categoría
             >
               <View style={styles.iconWrapper}>
                 <Icono name={item.icono || "Tag"} size={22} color="black" />
@@ -56,14 +62,11 @@ const CategorySection: React.FC<Props> = ({ categories }) => {
             style={({ pressed }) => [
               styles.card,
               {
-                backgroundColor: "#f4f4f5", // gris clarito para diferenciar
+                backgroundColor: "#f4f4f5",
                 transform: [{ scale: pressed ? 0.95 : 1 }],
               },
             ]}
-            onPress={() => {
-           
-              // router.push("/categories") si quieres navegar
-            }}
+            onPress={() => goToExplore()} // 👈 sin categoría => “Todo”
           >
             <View style={styles.iconWrapper}>
               <Icono name="EllipsisHorizontal" size={22} color="black" />
