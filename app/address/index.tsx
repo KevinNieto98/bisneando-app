@@ -1,13 +1,13 @@
 // app/(app)/address/AddressScreen.tsx
-
 import ModalDirecciones from "@/components/ModalDirecciones";
+import AlertModal from "@/components/ui/AlertModal"; // 👈 usa tu AlertModal
 import { Button } from "@/components/ui/Button";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/lib/supabase";
 import { Direccion, fetchDireccionesByUid } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -30,6 +30,8 @@ type Addr = {
   referencia: string;
   isPrincipal?: boolean;
 };
+
+const MAX_ADDR = 3; // 👈 límite de direcciones
 
 export default function AddressScreen() {
   // ---- uid de auth ----
@@ -63,6 +65,9 @@ export default function AddressScreen() {
 
   // Confirmación del botón "Usar"
   const [showUseConfirm, setShowUseConfirm] = useState(false);
+
+  // 👉 Modal de límite de direcciones
+  const [showLimitModal, setShowLimitModal] = useState(false);
 
   // solo seleccionar auto en el PRIMER load
   const firstLoadRef = useRef(true);
@@ -130,6 +135,19 @@ export default function AddressScreen() {
     setSelectedId((prev) => (prev === _id ? null : prev));
   };
 
+  // 👉 handler para "Agregar": respeta el límite usando AlertModal
+  const handleAddAddress = () => {
+    if (isLoading) {
+      Alert.alert("Un momento", "Estamos cargando tus direcciones.");
+      return;
+    }
+    if (addresses.length >= MAX_ADDR) {
+      setShowLimitModal(true); // 👈 abre tu AlertModal
+      return;
+    }
+    router.push("/set_address");
+  };
+
   // Abrir modal del botón "Usar"
   const openUseConfirm = () => {
     if (selectedId == null) {
@@ -139,10 +157,9 @@ export default function AddressScreen() {
     setShowUseConfirm(true);
   };
 
-
   const confirmUse = () => {
     if (selectedId != null) {
-        // Aquí luego puedes llamar a tu endpoint PATCH para setear principal,
+      // Aquí luego puedes llamar a tu endpoint PATCH para setear principal,
       // y tras éxito hacer fetchData(true)
     }
     setShowUseConfirm(false);
@@ -150,16 +167,33 @@ export default function AddressScreen() {
 
   const empty = !isLoading && addresses.length === 0;
 
+  const { lastPage } = useLocalSearchParams<{ lastPage?: string }>();
+
+const handleBack = () => {
+  if (lastPage) {
+    // usa replace para no apilar rutas; ajusta la ruta si tu checkout real es otra
+    router.replace("/checkout");
+  } else {
+    router.push("/(tabs)/profile");
+  }
+};
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-            <TouchableOpacity style={styles.backButton} onPress={() => router.push("/(tabs)/profile")} activeOpacity={0.7}>
-              <Ionicons name="arrow-back" size={24} color="#000" />
-            </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={handleBack}           // 👈 abre confirmación
+        activeOpacity={0.7}
+      >
+        <Ionicons name="arrow-back" size={24} color="#000" />
+      </TouchableOpacity>
+
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
 
-
       <View style={styles.content}>
-      <AddressHeader onBack={() => router.back()} onAdd={() => router.push("/set_address")} />
+        {/* onAdd ahora pasa por handleAddAddress (con límite y AlertModal) */}
+        <AddressHeader onBack={() => router.back()} onAdd={handleAddAddress} />
+
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           refreshControl={
@@ -189,7 +223,7 @@ export default function AddressScreen() {
           <Button
             title="Usar"
             iconName="Pin"
-            onPress={openUseConfirm}     // 👈 abre el ConfirmModal
+            onPress={openUseConfirm}
             variant="warning"
             style={styles.ctaButton}
           />
@@ -217,8 +251,16 @@ export default function AddressScreen() {
         icon="help-circle"
         confirmText="Sí, cambiar"
         cancelText="Cancelar"
-        onConfirm={confirmUse}                // 👈 console.log del id
+        onConfirm={confirmUse}
         onCancel={() => setShowUseConfirm(false)}
+      />
+
+      {/* Modal de límite de direcciones (usa tu AlertModal) */}
+      <AlertModal
+        visible={showLimitModal}
+        onClose={() => setShowLimitModal(false)}
+        title="Límite de direcciones"
+        message={`Solo puedes tener ${MAX_ADDR} direcciones.\n\nElimina una para agregar otra.`}
       />
     </SafeAreaView>
   );
@@ -247,5 +289,5 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 420,
   },
-    backButton: { marginRight: 8, padding: 6, borderRadius: 20, alignSelf: "flex-start" },
+  backButton: { marginRight: 8, padding: 6, borderRadius: 20, alignSelf: "flex-start" },
 });
