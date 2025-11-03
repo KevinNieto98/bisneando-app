@@ -19,9 +19,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import SuccessBanner from "../../components/ui/SuccessBanner";
 import AddressHeader from "./components/AddressHeader";
 import AddressList from "./components/AddressList";
-import AddressSuccessBanner from "./components/AddressSuccessBanner";
 
 type Addr = {
   id: number;
@@ -206,7 +206,7 @@ const handleBack = () => {
             />
           }
         >
-          <AddressSuccessBanner message={successMsg} />
+          <SuccessBanner message={successMsg} />
 
           <AddressList
             isLoading={isLoading}

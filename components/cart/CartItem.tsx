@@ -17,6 +17,10 @@ interface Props {
   item: CartItemType;
   onChangeQty: (id: number, qty: number) => void;
   onRemove: (id: number) => void;
+  /** Cuando está activo, marca el contorno en rojo */
+  notAvailable?: boolean;
+  /** Disponibilidad inmediata (p. ej. reservas, bloqueo, stock en bodega cercana) */
+  qtyAvailable?: number;
 }
 
 const toHNL = (n: number) =>
@@ -26,11 +30,30 @@ const toHNL = (n: number) =>
     maximumFractionDigits: 2,
   }).format(n);
 
-const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
-
-  const maxQty =
+const CartItem: React.FC<Props> = ({
+  item,
+  onChangeQty,
+  onRemove,
+  notAvailable,
+  qtyAvailable,
+}) => {
+  // Límites de stock
+  const stockCap =
     typeof item.inStock === "number" ? Math.max(0, item.inStock) : undefined;
+  const availabilityCap =
+    typeof qtyAvailable === "number" ? Math.max(0, qtyAvailable) : undefined;
+
+  // maxQty = el menor entre inStock y qtyAvailable (si ambos existen)
+  const maxQty =
+    typeof stockCap === "number" && typeof availabilityCap === "number"
+      ? Math.min(stockCap, availabilityCap)
+      : typeof stockCap === "number"
+      ? stockCap
+      : availabilityCap;
+
   const outOfStock = (maxQty ?? 1) <= 0;
+  const overRequested =
+    typeof availabilityCap === "number" && item.quantity > availabilityCap;
 
   const setQty = (next: number) => {
     const clamped =
@@ -42,8 +65,14 @@ const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.item, pressed && { opacity: 0.9 }]}
+      style={({ pressed }) => [
+        styles.item,
+        pressed && { opacity: 0.9 },
+        (notAvailable || overRequested || outOfStock) && styles.itemDanger, // borde rojo si hay problema
+      ]}
       onPress={goToDetail}
+      accessibilityRole="button"
+      accessibilityLabel={`Ver detalle de ${item.title}`}
     >
       {/* Imagen */}
       <Image
@@ -57,13 +86,33 @@ const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
           {item.title}
         </Text>
 
-        <Text style={[styles.stock, outOfStock && styles.stockDanger]}>
-          {typeof item.inStock === "number"
-            ? item.inStock > 0
-              ? `En stock: ${item.inStock}`
-              : "Sin stock"
-            : "Stock no especificado"}
+        {/* Línea de estado */}
+        <Text
+          style={[
+            styles.stock,
+            (outOfStock || notAvailable || overRequested) && styles.stockDanger,
+          ]}
+        >
+          {/* {
+  typeof qtyAvailable === "number"
+    ? (typeof item.inStock === "number"
+        ? `En stock: ${item.inStock} · Disponibles ahora: ${qtyAvailable}`
+        : `Disponibles ahora: ${qtyAvailable}`)
+    : notAvailable
+      ? "No disponible"
+      : typeof item.inStock === "number"
+        ? (item.inStock > 0 ? `En stock: ${item.inStock}` : "Sin stock")
+        : "Stock no especificado"
+} */}
+        {/* Mensaje de sobre-solicitud */}
+        {overRequested && (
+          <Text style={[styles.stock, styles.stockDanger]}>
+            Tienes {item.quantity} en el carrito, pero solo hay {qtyAvailable} disponibles.
+            Ajusta la cantidad.
+          </Text>
+        )}
         </Text>
+
 
         <View style={styles.controls}>
           <QuantityStepper
@@ -72,7 +121,7 @@ const CartItem: React.FC<Props> = ({ item, onChangeQty, onRemove }) => {
             min={1}
             max={maxQty}
             size="md"
-            disabled={outOfStock}
+            disabled={outOfStock || notAvailable}
             stopPropagation
           />
 
@@ -110,8 +159,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     paddingVertical: 12,
+    paddingHorizontal: 12, // <-- mantuve tu padding extra
     borderBottomWidth: 1,
     borderColor: "#e5e7eb",
+    borderWidth: 1,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+  },
+  itemDanger: {
+    borderColor: "#dc2626",
   },
   image: {
     width: 70,

@@ -1,12 +1,26 @@
+// components/ui/SuccessBanner.tsx
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-export default function AddressSuccessBanner({ message }: { message?: string }) {
+type Props = {
+  message?: string;
+  variant?: "success" | "error" | "info";
+};
+
+export default function SuccessBanner({ message, variant = "success" }: Props) {
   if (!message) return null;
+
+  const palette =
+    variant === "error"
+      ? { bg: "#ef4444", icon: "alert-circle" as const }
+      : variant === "info"
+      ? { bg: "#3b82f6", icon: "information-circle" as const }
+      : { bg: "#22c55e", icon: "checkmark-circle" as const };
+
   return (
-    <View style={styles.successBanner}>
-      <Ionicons name="checkmark-circle" size={18} color="#fff" />
+    <View style={[styles.successBanner, { backgroundColor: palette.bg }]}>
+      <Ionicons name={palette.icon} size={18} color="#fff" />
       <Text style={styles.successText}>{message}</Text>
     </View>
   );
@@ -19,7 +33,6 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     zIndex: 50,
-    backgroundColor: "#22c55e",
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,

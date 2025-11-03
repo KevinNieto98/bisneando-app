@@ -579,3 +579,122 @@ export async function actualizarDireccion(
     };
   }
 }
+
+
+// --------- Carrito: validar precios y stock ----------------------------
+export type CartValidateItemInput = {
+  id: number;           // id_producto en BD
+  price: number;        // precio que trae el cliente
+  quantity: number;     // cantidad solicitada
+  title?: string;       // opcional (para logs o UI)
+};
+
+export type CartValidateOk = {
+  id: number;
+  status: "ok";
+  requestedQty: number;
+  requestedPrice: number;
+  nombre_producto: string;
+  dbPrice: number;
+  availableQty: number;
+  message: string;
+};
+
+export type CartValidatePriceMismatch = {
+  id: number;
+  status: "price_mismatch";
+  requestedQty: number;
+  requestedPrice: number;
+  nombre_producto: string;
+  dbPrice: number;
+  availableQty: number;
+  message: string;
+};
+
+export type CartValidateInsufficient = {
+  id: number;
+  status: "insufficient_stock";
+  requestedQty: number;
+  requestedPrice: number;
+  nombre_producto: string;
+  dbPrice: number;
+  availableQty: number;
+  suggestedQty: number;
+  message: string;
+};
+
+export type CartValidateInactive = {
+  id: number;
+  status: "inactive";
+  requestedQty: number;
+  requestedPrice: number;
+  message: string;
+};
+
+export type CartValidateNotFound = {
+  id: number;
+  status: "not_found";
+  requestedQty: number;
+  requestedPrice: number;
+  message: string;
+};
+
+export type CartValidateItemResult =
+  | CartValidateOk
+  | CartValidatePriceMismatch
+  | CartValidateInsufficient
+  | CartValidateInactive
+  | CartValidateNotFound;
+
+export type CartValidateResponse = {
+  ok: boolean; // true solo si todos los items están "ok"
+  items: CartValidateItemResult[];
+  totals: {
+    serverSubtotal: number; // calculado con precio/cant de BD
+  };
+};
+
+/**
+ * Valida el carrito contra el backend.
+ * - Envía { items } al endpoint POST /api/cart/validate
+ * - Soporta Authorization opcional via Bearer token
+ */
+export async function validateCart(
+  items: CartValidateItemInput[],
+  token?: string
+): Promise<CartValidateResponse> {
+  try {
+    // Sanitizar payload mínimo para evitar enviar props extra
+    const payload = {
+      items: items.map(({ id, price, quantity, title }) => ({
+        id,
+        price,
+        quantity,
+        ...(title ? { title } : {}),
+      })),
+    };
+
+    const data = await apiFetch<CartValidateResponse>("/api/cart/validate", {
+      method: "POST",
+      headers: { ...withAuthHeader(token) },
+      body: payload,
+    });
+
+    // Normalización defensiva por si el backend cambia algo menor
+    return {
+      ok: Boolean(data?.ok),
+      items: Array.isArray(data?.items) ? data.items : [],
+      totals: {
+        serverSubtotal: Number(data?.totals?.serverSubtotal ?? 0),
+      },
+    };
+  } catch (error: any) {
+    console.error("Error validateCart:", error);
+    // No reventar la app: devolver estructura conocida con ok=false
+    return {
+      ok: false,
+      items: [],
+      totals: { serverSubtotal: 0 },
+    };
+  }
+}
