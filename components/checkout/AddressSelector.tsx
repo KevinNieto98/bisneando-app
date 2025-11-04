@@ -116,7 +116,8 @@ export const AddressSelector: React.FC<Props> = ({
         shadowOpacity: 0.2,
         shadowRadius: 6,
         shadowOffset: { width: 0, height: 2 },
-        ...(Platform.OS === "android" ? { elevation: 2 } : null),
+        // 👇 ANTES estaba `: null` y eso hacía spread de null -> TypeError
+        ...(Platform.OS === "android" ? { elevation: 2 } : {}),
       },
     ];
 

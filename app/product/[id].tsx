@@ -31,42 +31,38 @@ export default function ProductScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const routeId = id ? Number(id) : undefined;
 
+  // ---- STATE
   const [producto, setProducto] = useState<ProductAPI | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // cantidad con clamp por stock
   const [cantidad, _setCantidad] = useState(1);
 
-  // 🛒 carrito
+  // ---- STORES (hooks siempre arriba)
   const addToCart = useCartStore((s) => s.add);
   const setQtyStore = useCartStore((s) => s.setQty);
   const itemsMap = useCartStore((s) => s.items);
   const totalItems = useCartStore((s) => s.totalItems());
-  // 👉 línea del carrito para este producto (si ya fue agregado)
   const cartLine = useCartStore((s) =>
     routeId != null ? s.items[String(routeId)] : undefined
   );
 
-  // Similares (si ya los cargas en AppStore)
   const products = useAppStore((state) => state.products);
 
-  // Toast "agregado"
+  // ---- UI helpers
   const [addedVisible, setAddedVisible] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const triggerAddedToast = (msg = "Agregado al carrito") => {
+  const triggerAddedToast = () => {
     try { Haptics.selectionAsync(); } catch {}
     setAddedVisible(true);
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => setAddedVisible(false), 1400);
   };
 
-  const setCantidad = (next: number) => {
-    const stock = Number(producto?.qty ?? 0);
-    const clamped = Math.max(1, Math.min(stock || 1, next));
-    _setCantidad(clamped);
-  };
+  // ---- Utils
+  const clampByStock = (val: number, stk: number) =>
+    Math.max(1, Math.min(stk || 1, val));
 
+  // ---- EFFECT: cargar producto
   useEffect(() => {
     if (!id) return;
     const loadProduct = async () => {
@@ -75,7 +71,7 @@ export default function ProductScreen() {
         setProducto(data);
         const stock = Number(data?.qty ?? 0);
 
-        // 🔁 Al cargar, sincroniza cantidad con lo que ya hay en el carrito (si existe)
+        // sincroniza cantidad con el carrito si ya está
         const inCartQty = cartLine?.quantity ?? 0;
         const base = inCartQty > 0 ? inCartQty : 1;
         _setCantidad(stock > 0 ? Math.min(base, stock) : 1);
@@ -90,16 +86,39 @@ export default function ProductScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // 🪢 Si cambia la línea del carrito (por ejemplo, desde otra screen), reflejarlo
+  // ---- Datos derivados (no hooks)
+  const stock = Number(producto?.qty ?? 0);
+  const idNum = Number(producto?.id_producto ?? 0);
+  const existsInCart = !!itemsMap[String(idNum)];
+  const currentInCart = cartLine?.quantity ?? 0;
+
+  // ---- EFFECT: reflejar cambios externos del carrito -> SOLO si cambia de verdad
   useEffect(() => {
     if (!producto) return;
-    const stock = Number(producto.qty ?? 0);
-    const inCartQty = cartLine?.quantity ?? 0;
-    if (inCartQty > 0) {
-      _setCantidad(Math.min(inCartQty, stock || inCartQty));
+    if (currentInCart <= 0) return;
+    const next = clampByStock(currentInCart, stock);
+    if (next !== cantidad) {
+      _setCantidad(next);
     }
-  }, [cartLine?.quantity, producto]);
+  }, [currentInCart, producto, stock, cantidad]);
 
+  // ⚠️ IMPORTANTE: NO hay efecto de "autosync".
+  // La sincronización automática se hace DIRECTO en el handler setCantidad,
+  // para evitar ciclos de: setQtyStore -> cambia cartLine -> efecto -> setCantidad -> ...
+
+  // ---- Handler: usuario mueve el contador
+  const setCantidad = (next: number) => {
+    const clamped = clampByStock(next, stock);
+    // 1) actualiza UI local
+    _setCantidad(clamped);
+
+    // 2) si ya existe en carrito, sincroniza store solo si realmente cambia
+    if (existsInCart && stock > 0 && clamped !== currentInCart) {
+      setQtyStore(idNum, clamped);
+    }
+  };
+
+  // ---- UI
   if (loading) return <ProductSkeleton />;
 
   if (!producto) {
@@ -110,9 +129,7 @@ export default function ProductScreen() {
     );
   }
 
-  const stock = Number(producto.qty ?? 0);
-
-  // Helper: mapea el producto del API al formato del carrito
+  // Helper para mapear al carrito
   const mapProductoToCart = (p: ProductAPI) => ({
     id: Number(p.id_producto),
     title: p.nombre_producto,
@@ -120,9 +137,6 @@ export default function ProductScreen() {
     images: p.imagenes ?? [],
     inStock: Number(p.qty ?? 0) || undefined,
   });
-
-  const idNum = Number(producto.id_producto);
-  const existsInCart = !!itemsMap[String(idNum)];
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -162,26 +176,22 @@ export default function ProductScreen() {
               onAdd={() => {
                 if (cantidad > stock || stock <= 0) return;
 
-                // ✅ Si ya existe en carrito, ajusta a la cantidad exacta (no suma)
-                if (existsInCart) {
-                  setQtyStore(idNum, cantidad);
-                } else {
+                if (!existsInCart) {
                   addToCart(mapProductoToCart(producto), cantidad);
                 }
-
                 triggerAddedToast();
               }}
               onBuy={() => {
                 if (cantidad > stock || stock <= 0) return;
 
-                if (existsInCart) {
-                  setQtyStore(idNum, cantidad); // exacto
-                } else {
+                if (!existsInCart) {
                   addToCart(mapProductoToCart(producto), cantidad);
+                } else {
+                  // Por seguridad, al comprar fija exacto lo que está en el contador
+                  setQtyStore(idNum, clampByStock(cantidad, stock));
                 }
-
                 try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
-                router.push("/cart"); // ajusta la ruta si tu archivo vive en otra carpeta
+                router.push("/cart");
               }}
             />
 

@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import React from "react";
 import { Pressable, StyleSheet, Text, ViewStyle } from "react-native";
 import Icono from "./Icon.native";
@@ -11,6 +12,8 @@ type EditButtonProps = {
   iconSize?: number;
 };
 
+const CART_PATH = "/(tabs)/cart"; // ← destino por defecto
+
 export const EditButton: React.FC<EditButtonProps> = ({
   label = "Editar",
   onPress,
@@ -23,7 +26,10 @@ export const EditButton: React.FC<EditButtonProps> = ({
     if (onPress) {
       onPress();
     } else {
-  
+      // Navegar al carrito por defecto
+      router.replace(CART_PATH);
+      // Si prefieres mantener historial:
+      // router.push(CART_PATH);
     }
   };
 
@@ -36,6 +42,8 @@ export const EditButton: React.FC<EditButtonProps> = ({
       ]}
       android_ripple={{ color: "#e0e7ff", borderless: true }}
       onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel="Editar carrito"
     >
       <Icono name={iconName} size={iconSize} color={iconColor} />
       <Text style={[styles.editText, { color: iconColor }]}>{label}</Text>

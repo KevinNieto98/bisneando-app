@@ -161,7 +161,7 @@ export default function AddressFormScreen() {
   // --- confirm modal / saving ---
   const [showConfirm, setShowConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
-
+const { lastPage } = useLocalSearchParams<{ lastPage?: string }>();
   // --- confirmación al salir ---
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const onPressBack = () => {
@@ -170,7 +170,10 @@ export default function AddressFormScreen() {
   };
   const confirmExit = () => {
     setShowExitConfirm(false);
-    router.replace("/address");
+    router.replace({
+  pathname: "/address",
+  params: lastPage === "checkout" ? { lastPage: "checkout" } : {},
+});
   };
   const cancelExit = () => setShowExitConfirm(false);
 
@@ -347,7 +350,10 @@ export default function AddressFormScreen() {
       }
 
       setShowConfirm(false);
-      router.replace("/address");
+      router.replace({
+  pathname: "/address",
+  params: lastPage === "checkout" ? { lastPage: "checkout" } : {},
+});
     } catch (err: any) {
       Alert.alert("Error", err?.message ?? "Ocurrió un error al guardar la dirección.");
     } finally {

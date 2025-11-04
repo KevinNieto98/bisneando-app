@@ -118,13 +118,21 @@ export default function SetAddressScreen() {
     setSelectedCoord({ latitude: r.latitude, longitude: r.longitude });
   };
 
+  const { lastPage } = useLocalSearchParams<{ lastPage?: string }>();
+
+
   const handleContinue = () => {
     if (!selectedCoord) return;
 
+
+
+
+    
     const params: Record<string, string> = {
       lat: String(selectedCoord.latitude),
       lng: String(selectedCoord.longitude),
       isEdit: editMode ? "1" : "0",
+
     };
 
     if (editMode && prefill) {
@@ -137,7 +145,13 @@ export default function SetAddressScreen() {
       }
     }
 
-    router.push({ pathname: "/new_address", params });
+ router.push({
+  pathname: "/new_address",
+  params: {
+    ...params, // lo que ya estabas enviando
+    ...(lastPage === "checkout" ? { lastPage: "checkout" } : {}),
+  },
+});
   };
 
   // Back: abre confirmación en vez de goBack()

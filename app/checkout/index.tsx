@@ -7,9 +7,17 @@ import { PlaceOrderButton } from "@/components/checkout/PlaceOrderButton";
 import { ProductHeader } from "@/components/product/ProductHeader";
 import useAuth from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, Platform, ScrollView, StatusBar, StyleSheet, Text, View } from "react-native";
+import {
+  BackHandler,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // 🔹 Direcciones reales
@@ -19,7 +27,7 @@ import { Direccion, fetchDireccionesByUid } from "@/services/api";
 // 🔹 Confirmación al salir
 import ConfirmModal from "@/components/ui/ConfirmModal";
 
-// ✅ Necesario para detectar foco de pantalla (trabaja con expo-router)
+// ✅ Necesario para detectar foco de pantalla (trabaja con expo-router / react-navigation)
 import { useFocusEffect } from "@react-navigation/native";
 
 type Addr = {
@@ -30,14 +38,25 @@ type Addr = {
   isPrincipal?: boolean;
 };
 
+// Tipos de params recibidos
+type CheckoutParams = {
+  cart?: string;   // encodeURIComponent(JSON.stringify([...]))
+  totals?: string; // encodeURIComponent(JSON.stringify({ subtotal, shipping, taxes, total }))
+};
+
 export default function CheckoutScreen() {
   const { user, loading } = useAuth();
   const { products, loadProducts } = useAppStore();
+
+  // ⬇️ Recibir carrito/total desde router params
+  const { cart: cartParam, totals: totalsParam } = useLocalSearchParams<CheckoutParams>();
 
   // Estado de checkout
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "tarjeta" | "">("");
   const [cardForm, setCardForm] = useState({ holder: "", number: "", expiry: "", cvv: "" });
+
+  // Ítems que se renderizan en el checkout
   const [items, setItems] = useState<any[]>([]);
 
   // Direcciones
@@ -54,12 +73,10 @@ export default function CheckoutScreen() {
       if (Platform.OS !== "android") return undefined;
 
       const onBackPress = () => {
-        // si el modal ya está abierto, ciérralo
         if (showBackConfirm) {
           setShowBackConfirm(false);
-          return true; // consumimos el evento
+          return true;
         }
-        // si no está abierto, mostrar confirm y bloquear navegación por defecto
         setShowBackConfirm(true);
         return true;
       };
@@ -76,22 +93,70 @@ export default function CheckoutScreen() {
     }
   }, [loading, user]);
 
-  // Productos demo
+  // Si NO llegaron params, mantiene tu demo (productos del store)
   useEffect(() => {
+    if (cartParam) return; // si llegó carrito por params, no cargues demo
     loadProducts();
-  }, [loadProducts]);
+  }, [loadProducts, cartParam]);
 
+  // Si hay productos demo y no llegó carrito por params, arma items de prueba
   useEffect(() => {
+    if (cartParam) return;
     if (products.length > 0) {
       const enriched = products.map((p) => ({
-        ...p,
+        id: p.id,
+        title: p.title,
+        price: Number(p.price),
         quantity: 1,
+        image: Array.isArray(p.images) ? p.images[0] : undefined,
         inStock: Math.floor(Math.random() * 10) + 1,
-        subtotal: p.price * 1,
+        subtotal: Number(p.price) * 1,
       }));
       setItems(enriched);
     }
-  }, [products]);
+  }, [products, cartParam]);
+
+  // ⬇️ Parsear carrito recibido por params (con dbPrice ya aplicado como price)
+  useEffect(() => {
+    if (!cartParam) return;
+    try {
+      const parsed = JSON.parse(decodeURIComponent(cartParam));
+      // normalizar (asegurar price/quantity numéricos y subtotal)
+      const normalized = (Array.isArray(parsed) ? parsed : []).map((it) => {
+        const priceNum = Number(it.price);
+        const qtyNum = Number(it.quantity);
+        return {
+          id: Number(it.id),
+          title: String(it.title ?? ""),
+          price: isNaN(priceNum) ? 0 : priceNum, // ← aquí ya viene dbPrice si existía
+          quantity: isNaN(qtyNum) ? 0 : qtyNum,
+          image: it.image,
+          dbPrice: typeof it.dbPrice === "number" ? it.dbPrice : undefined,
+          subtotal: isNaN(priceNum) || isNaN(qtyNum) ? 0 : priceNum * qtyNum,
+        };
+      });
+      setItems(normalized);
+    } catch (e) {
+      console.warn("No se pudo parsear cart param:", e);
+      // si falla parseo, dejamos items como estén (demo o vacío)
+    }
+  }, [cartParam]);
+
+  // Parsear totales recibidos (opcional). Si no vienen, se calculará abajo.
+  const totalsFromParam = useMemo(() => {
+    if (!totalsParam) return null;
+    try {
+      const t = JSON.parse(decodeURIComponent(totalsParam));
+      const subtotal = Number(t.subtotal ?? 0);
+      const shipping = Number(t.shipping ?? 0);
+      const taxes = Number(t.taxes ?? 0);
+      const total = Number(t.total ?? subtotal + shipping + taxes);
+      return { subtotal, shipping, taxes, total };
+    } catch (e) {
+      console.warn("No se pudo parsear totals param:", e);
+      return null;
+    }
+  }, [totalsParam]);
 
   // fetch direcciones por uid
   const fetchAddresses = async (hard = false) => {
@@ -129,14 +194,27 @@ export default function CheckoutScreen() {
     if (user?.id) fetchAddresses(true);
   }, [user?.id]);
 
-  // Resumen
+  // Resumen: usa los totales del server si llegaron, si no, calcula
   const summary = useMemo(() => {
-    const itemsCount = items.reduce((a, i) => a + i.quantity, 0);
-    const subtotal = items.reduce((a, i) => a + (i.subtotal ?? 0), 0);
+    const itemsCount = items.reduce((a, i) => a + Number(i.quantity || 0), 0);
+
+    if (totalsFromParam) {
+      return {
+        itemsCount,
+        subtotal: totalsFromParam.subtotal,
+        taxes: totalsFromParam.taxes,
+        total: totalsFromParam.total,
+      };
+    }
+
+    const subtotal = items.reduce(
+      (a, i) => a + Number(i.subtotal || (i.price || 0) * (i.quantity || 0)),
+      0
+    );
     const taxes = Math.round(subtotal * 0.15 * 100) / 100;
     const total = subtotal + taxes;
     return { itemsCount, subtotal, taxes, total };
-  }, [items]);
+  }, [items, totalsFromParam]);
 
   // Validaciones
   const isCardValid =
@@ -189,6 +267,7 @@ export default function CheckoutScreen() {
           setCardForm={setCardForm}
         />
 
+        {/* Render del carrito recibido (o demo) */}
         <CartSection items={items} />
       </ScrollView>
 
@@ -213,12 +292,34 @@ export default function CheckoutScreen() {
   );
 }
 
+// Sombras y elevación con fallbacks seguros (nada de spreads de undefined)
+const iosShadow = Platform.OS === "ios"
+  ? {
+      shadowColor: "#000",
+      shadowOpacity: 0.08,
+      shadowOffset: { width: 0, height: 2 },
+      shadowRadius: 6,
+    }
+  : {};
+
+const androidElevation = Platform.OS === "android" ? { elevation: 0 } : {};
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFD600" },
-  scrollArea: { flex: 1, marginBottom: 3, borderRadius: 12 },
+  scrollArea: {
+    flex: 1,
+    marginBottom: 3,
+    borderRadius: 12,
+    // ✅ spreads con objeto seguro (nunca undefined)
+    ...iosShadow,
+    ...androidElevation,
+  },
   scrollContent: { padding: 2 },
   loadingContainer: {
-    flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff",
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
   },
   loadingText: { fontSize: 16, color: "#52525b" },
 });

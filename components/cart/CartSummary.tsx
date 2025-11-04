@@ -9,8 +9,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 type ValidationIssue = {
   id: number;
   status: "insufficient_stock" | "price_mismatch" | "inactive" | "not_found";
-  availableQty?: number; // si hay stock insuficiente
-  dbPrice?: number;      // si hubo cambio de precio
+  availableQty?: number;
+  dbPrice?: number;
   nombre_producto?: string;
 };
 
@@ -21,7 +21,6 @@ type Props = {
   total: number;
   toHNL: (n: number) => string;
   items: CartItemType[];
-  /** Notifica al screen que hubo errores, con detalle por item */
   onValidationFail?: (payload: {
     message: string;
     issues: ValidationIssue[];
@@ -55,16 +54,16 @@ export const CartSummary: React.FC<Props> = ({
 
       console.log("Validación del carrito:", res);
 
-      if (!res.ok) {
-        const first = res.items?.find((i) => i.status !== "ok");
+      if (!res?.ok) {
+        const first = res?.items?.find((i: any) => i.status !== "ok");
         let msg = "No se puede continuar con la orden. Revisa tu carrito.";
         if (first) {
           switch (first.status) {
             case "insufficient_stock":
-              msg = `Stock insuficiente para "${(first as any).nombre_producto}". Disponibles: ${(first as any).availableQty}.`;
+              msg = `Stock insuficiente para "${first.nombre_producto}". Disponibles: ${first.availableQty}.`;
               break;
             case "price_mismatch":
-              msg = `El precio de "${(first as any).nombre_producto}" cambió a ${(first as any).dbPrice}.`;
+              msg = `El precio de "${first.nombre_producto}" cambió a ${first.dbPrice}.`;
               break;
             case "inactive":
               msg = "Un producto está inactivo. Retíralo del carrito.";
@@ -76,8 +75,8 @@ export const CartSummary: React.FC<Props> = ({
         }
 
         const issues: ValidationIssue[] =
-          res.items
-            ?.filter((i) => i.status !== "ok")
+          res?.items
+            ?.filter((i: any) => i.status !== "ok")
             .map((i: any) => ({
               id: i.id,
               status: i.status,
@@ -90,7 +89,53 @@ export const CartSummary: React.FC<Props> = ({
         return;
       }
 
-      router.push("/checkout");
+      // === OK: construir carrito para checkout con dbPrice (server) ===
+      const serverItems = Array.isArray(res.items) ? res.items : [];
+      const serverItemsMap = new Map<number, any>(
+        serverItems.map((s: any) => [Number(s.id), s])
+      );
+
+      // Construimos el cart que consumirá Checkout
+      const checkoutCart = items.map((i) => {
+        const server = serverItemsMap.get(i.id);
+        const priceFromServer =
+          server && typeof server.dbPrice === "number" ? server.dbPrice : i.price;
+
+        return {
+          id: i.id,
+          title: i.title,
+          quantity: i.quantity,
+          // price que usará checkout (definitivo para cobro)
+          price: priceFromServer,
+          // opcional: enviamos dbPrice explícito por transparencia
+          dbPrice: typeof server?.dbPrice === "number" ? server.dbPrice : undefined,
+          // si quieres, puedes incluir la primera imagen u otros campos
+          image: Array.isArray(i.images) ? i.images[0] : undefined,
+        };
+      });
+
+      // Totales recalculados con precios del server
+      const subtotalServer = checkoutCart.reduce(
+        (acc, it) => acc + Number(it.price) * Number(it.quantity),
+        0
+      );
+      const totalServer = subtotalServer + (shipping || 0) + (taxes || 0);
+
+      // Enviamos al checkout. Usamos encodeURIComponent para objetos grandes.
+      router.push({
+        pathname: "/checkout",
+        params: {
+          cart: encodeURIComponent(JSON.stringify(checkoutCart)),
+          totals: encodeURIComponent(
+            JSON.stringify({
+              subtotal: subtotalServer,
+              shipping,
+              taxes,
+              total: totalServer,
+            })
+          ),
+        },
+      });
     } catch (err) {
       console.error("Error en checkout:", err);
       onValidationFail?.({

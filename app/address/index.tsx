@@ -1,6 +1,6 @@
 // app/(app)/address/AddressScreen.tsx
 import ModalDirecciones from "@/components/ModalDirecciones";
-import AlertModal from "@/components/ui/AlertModal"; // 👈 usa tu AlertModal
+import AlertModal from "@/components/ui/AlertModal";
 import { Button } from "@/components/ui/Button";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useProfile } from "@/hooks/useProfile";
@@ -31,9 +31,14 @@ type Addr = {
   isPrincipal?: boolean;
 };
 
-const MAX_ADDR = 3; // 👈 límite de direcciones
+const MAX_ADDR = 3;
 
 export default function AddressScreen() {
+  // ===== origen del flujo
+  const { lastPage } = useLocalSearchParams<{ lastPage?: string }>();
+  // Se captura una sola vez al montar; si era checkout, se queda true
+  const fromCheckoutRef = useRef(lastPage === "checkout");
+
   // ---- uid de auth ----
   const [uid, setUid] = useState<string | null>(null);
   useEffect(() => {
@@ -52,7 +57,6 @@ export default function AddressScreen() {
     };
   }, []);
 
-  // (Opcional) perfil
   useProfile(uid ?? undefined);
 
   // ---- estado UI/negocio ----
@@ -60,16 +64,11 @@ export default function AddressScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [addresses, setAddresses] = useState<Addr[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<Addr | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(null); // 👉 seleccionada en UI
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [successMsg, setSuccessMsg] = useState<string>("");
 
-  // Confirmación del botón "Usar"
   const [showUseConfirm, setShowUseConfirm] = useState(false);
-
-  // 👉 Modal de límite de direcciones
   const [showLimitModal, setShowLimitModal] = useState(false);
-
-  // solo seleccionar auto en el PRIMER load
   const firstLoadRef = useRef(true);
 
   // ---- fetch direcciones ----
@@ -92,7 +91,6 @@ export default function AddressScreen() {
 
       setAddresses(mapped);
 
-      // ✅ Primer load: seleccionar la principal
       if (firstLoadRef.current) {
         const principal = mapped.find((m) => m.isPrincipal);
         setSelectedId(principal?.id ?? null);
@@ -135,17 +133,20 @@ export default function AddressScreen() {
     setSelectedId((prev) => (prev === _id ? null : prev));
   };
 
-  // 👉 handler para "Agregar": respeta el límite usando AlertModal
+  // 👉 handler para "Agregar": respeta límite y PROPAGA lastPage si venimos de checkout
   const handleAddAddress = () => {
     if (isLoading) {
       Alert.alert("Un momento", "Estamos cargando tus direcciones.");
       return;
     }
     if (addresses.length >= MAX_ADDR) {
-      setShowLimitModal(true); // 👈 abre tu AlertModal
+      setShowLimitModal(true);
       return;
     }
-    router.push("/set_address");
+    router.push({
+      pathname: "/set_address",
+      params: fromCheckoutRef.current ? { lastPage: "checkout" } : {},
+    });
   };
 
   // Abrir modal del botón "Usar"
@@ -157,32 +158,34 @@ export default function AddressScreen() {
     setShowUseConfirm(true);
   };
 
+  // Confirmar “Usar” -> volver a checkout y pasar addressId
   const confirmUse = () => {
-    if (selectedId != null) {
-      // Aquí luego puedes llamar a tu endpoint PATCH para setear principal,
-      // y tras éxito hacer fetchData(true)
-    }
     setShowUseConfirm(false);
+    if (selectedId != null) {
+      router.replace({
+        pathname: "/checkout",
+        params: { addressId: String(selectedId) },
+      });
+    } else {
+      router.replace("/checkout");
+    }
   };
 
   const empty = !isLoading && addresses.length === 0;
 
-  const { lastPage } = useLocalSearchParams<{ lastPage?: string }>();
-
-const handleBack = () => {
-  if (lastPage) {
-    // usa replace para no apilar rutas; ajusta la ruta si tu checkout real es otra
-    router.replace("/checkout");
-  } else {
-    router.push("/(tabs)/profile");
-  }
-};
+  const handleBack = () => {
+    if (fromCheckoutRef.current) {
+      router.replace("/checkout");
+    } else {
+      router.push("/(tabs)/profile");
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <TouchableOpacity
         style={styles.backButton}
-        onPress={handleBack}           // 👈 abre confirmación
+        onPress={handleBack}
         activeOpacity={0.7}
       >
         <Ionicons name="arrow-back" size={24} color="#000" />
@@ -191,8 +194,10 @@ const handleBack = () => {
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
 
       <View style={styles.content}>
-        {/* onAdd ahora pasa por handleAddAddress (con límite y AlertModal) */}
-        <AddressHeader onBack={() => router.back()} onAdd={handleAddAddress} />
+        <AddressHeader
+          onBack={() => router.back()}
+          onAdd={handleAddAddress}
+        />
 
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -218,19 +223,21 @@ const handleBack = () => {
           />
         </ScrollView>
 
-        {/* Botón flotante centrado abajo */}
-        <View style={styles.fabWrap}>
-          <Button
-            title="Usar"
-            iconName="Pin"
-            onPress={openUseConfirm}
-            variant="warning"
-            style={styles.ctaButton}
-          />
-        </View>
+        {/* Botón "Usar" SOLO si venimos del checkout (persistente via ref) */}
+        {fromCheckoutRef.current && (
+          <View style={styles.fabWrap}>
+            <Button
+              title="Usar"
+              iconName="Pin"
+              onPress={openUseConfirm}
+              variant="warning"
+              style={styles.ctaButton}
+            />
+          </View>
+        )}
       </View>
 
-      {/* Modal Direcciones (acciones Editar/Eliminar) */}
+      {/* Modal Direcciones */}
       {selectedAddress && (
         <ModalDirecciones
           isVisible={!!selectedAddress}
@@ -243,19 +250,19 @@ const handleBack = () => {
         />
       )}
 
-      {/* Modal de confirmación al tocar "Usar" */}
+      {/* Confirm usar */}
       <ConfirmModal
         visible={showUseConfirm}
-        title="Confirmación"
-        message="¿Estás seguro que deseas cambiar la dirección principal?"
+        title="Usar esta dirección"
+        message="¿Deseas usar esta dirección para tu compra?"
         icon="help-circle"
-        confirmText="Sí, cambiar"
+        confirmText="Sí, usar"
         cancelText="Cancelar"
         onConfirm={confirmUse}
         onCancel={() => setShowUseConfirm(false)}
       />
 
-      {/* Modal de límite de direcciones (usa tu AlertModal) */}
+      {/* Límite */}
       <AlertModal
         visible={showLimitModal}
         onClose={() => setShowLimitModal(false)}
@@ -277,7 +284,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
 
-  // botón flotante
   fabWrap: {
     position: "absolute",
     left: 16,

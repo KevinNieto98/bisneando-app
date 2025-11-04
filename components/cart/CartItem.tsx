@@ -17,7 +17,7 @@ interface Props {
   item: CartItemType;
   onChangeQty: (id: number, qty: number) => void;
   onRemove: (id: number) => void;
-  /** Cuando está activo, marca el contorno en rojo */
+  /** Cuando está activo, ya no controla borde rojo; se deja por compatibilidad */
   notAvailable?: boolean;
   /** Disponibilidad inmediata (p. ej. reservas, bloqueo, stock en bodega cercana) */
   qtyAvailable?: number;
@@ -34,7 +34,7 @@ const CartItem: React.FC<Props> = ({
   item,
   onChangeQty,
   onRemove,
-  notAvailable,
+  notAvailable, // no afecta el borde
   qtyAvailable,
 }) => {
   // Límites de stock
@@ -52,8 +52,9 @@ const CartItem: React.FC<Props> = ({
       : availabilityCap;
 
   const outOfStock = (maxQty ?? 1) <= 0;
-  const overRequested =
-    typeof availabilityCap === "number" && item.quantity > availabilityCap;
+
+  // Excede el máximo permitido (considerando el mínimo entre stock y disponibilidad)
+  const exceedsMax = typeof maxQty === "number" ? item.quantity > maxQty : false;
 
   const setQty = (next: number) => {
     const clamped =
@@ -63,12 +64,15 @@ const CartItem: React.FC<Props> = ({
 
   const goToDetail = () => router.push(`/product/${item.id}`);
 
+  // Rojo solo si no hay stock o si la cantidad supera el máximo
+  const danger = outOfStock || exceedsMax;
+
   return (
     <Pressable
       style={({ pressed }) => [
         styles.item,
         pressed && { opacity: 0.9 },
-        (notAvailable || overRequested || outOfStock) && styles.itemDanger, // borde rojo si hay problema
+        danger && styles.itemDanger, // borde rojo solo si hay problema real
       ]}
       onPress={goToDetail}
       accessibilityRole="button"
@@ -80,39 +84,22 @@ const CartItem: React.FC<Props> = ({
         style={styles.image}
       />
 
-      {/* Centro: título, stock, contador + eliminar */}
+      {/* Centro: título, estado, contador + eliminar */}
       <View style={styles.info}>
         <Text numberOfLines={2} style={styles.itemTitle}>
           {item.title}
         </Text>
 
-        {/* Línea de estado */}
-        <Text
-          style={[
-            styles.stock,
-            (outOfStock || notAvailable || overRequested) && styles.stockDanger,
-          ]}
-        >
-          {/* {
-  typeof qtyAvailable === "number"
-    ? (typeof item.inStock === "number"
-        ? `En stock: ${item.inStock} · Disponibles ahora: ${qtyAvailable}`
-        : `Disponibles ahora: ${qtyAvailable}`)
-    : notAvailable
-      ? "No disponible"
-      : typeof item.inStock === "number"
-        ? (item.inStock > 0 ? `En stock: ${item.inStock}` : "Sin stock")
-        : "Stock no especificado"
-} */}
-        {/* Mensaje de sobre-solicitud */}
-        {overRequested && (
+        {/* Línea de estado (solo si hay problema) */}
+        {outOfStock && (
+          <Text style={[styles.stock, styles.stockDanger]}>Sin stock</Text>
+        )}
+
+        {exceedsMax && !outOfStock && (
           <Text style={[styles.stock, styles.stockDanger]}>
-            Tienes {item.quantity} en el carrito, pero solo hay {qtyAvailable} disponibles.
-            Ajusta la cantidad.
+            Tienes {item.quantity} en el carrito, pero solo hay {maxQty} disponibles. Ajusta la cantidad.
           </Text>
         )}
-        </Text>
-
 
         <View style={styles.controls}>
           <QuantityStepper
@@ -121,7 +108,7 @@ const CartItem: React.FC<Props> = ({
             min={1}
             max={maxQty}
             size="md"
-            disabled={outOfStock || notAvailable}
+            disabled={outOfStock} // puedes corregir la cantidad aunque antes estuviera "no disponible"
             stopPropagation
           />
 
@@ -159,7 +146,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     paddingVertical: 12,
-    paddingHorizontal: 12, // <-- mantuve tu padding extra
+    paddingHorizontal: 12,
     borderBottomWidth: 1,
     borderColor: "#e5e7eb",
     borderWidth: 1,
