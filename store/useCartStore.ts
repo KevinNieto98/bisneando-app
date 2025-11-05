@@ -1,3 +1,4 @@
+// useCartStore.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -20,11 +21,14 @@ type CartState = {
   totalLines: () => number;
   totalPrice: () => number;
 
-  // Acciones (reciben idKey = number|string)
+  // Acciones
   add: (item: Omit<CartItem, "quantity">, qty?: number) => void;
   setQty: (idKey: number | string, qty: number) => void;
   remove: (idKey: number | string) => void;
   clear: () => void;
+
+  // 👇 NUEVA ACCIÓN
+  applyServerPrices: (server: Array<{ id: number; dbPrice?: number }>) => void;
 };
 
 const idKeyOf = (id: number | string) => String(id);
@@ -36,9 +40,7 @@ export const useCartStore = create<CartState>()(
 
       totalItems: () =>
         Object.values(get().items).reduce((acc, it) => acc + it.quantity, 0),
-
       totalLines: () => Object.keys(get().items).length,
-
       totalPrice: () =>
         Object.values(get().items).reduce((acc, it) => acc + it.price * it.quantity, 0),
 
@@ -97,13 +99,33 @@ export const useCartStore = create<CartState>()(
       },
 
       clear: () => set({ items: {} }),
+
+      // 🔥 Actualiza precios locales con los dbPrice del server
+      applyServerPrices: (server) => {
+        set((state) => {
+          // Mapa id -> dbPrice (solo los válidos)
+          const map = new Map(
+            server
+              .filter((s) => typeof s.dbPrice === "number")
+              .map((s) => [idKeyOf(s.id), Number(s.dbPrice)])
+          );
+
+          if (map.size === 0) return state;
+
+          const next: Record<string, CartItem> = {};
+          for (const [key, it] of Object.entries(state.items)) {
+            const newPrice = map.get(key);
+            next[key] = newPrice != null ? { ...it, price: newPrice } : it;
+          }
+          return { items: next };
+        });
+      },
     }),
     {
       name: "bisneando-cart-v1",
       storage: createJSONStorage(() => AsyncStorage),
-      version: 5, // ⬆️ nueva versión sin slug
+      version: 5,
       migrate: async (persisted: any, fromVersion: number) => {
-        // Reindexa por id y elimina 'slug' si existía
         if (fromVersion < 5 && persisted?.state?.items) {
           const oldItems: Record<string, any> = persisted.state.items;
           const newItems: Record<string, CartItem> = {};
@@ -136,7 +158,6 @@ export const useCartStore = create<CartState>()(
         }
         return persisted;
       },
-      // partialize: (state) => ({ items: state.items }),
     }
   )
 );

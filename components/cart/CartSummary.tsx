@@ -1,10 +1,17 @@
 import { validateCart } from "@/services/api";
 import type { CartItem as CartItemType } from "@/store/useCartStore";
+import { useCartStore } from "@/store/useCartStore";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { router } from "expo-router";
 import React, { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 type ValidationIssue = {
   id: number;
@@ -38,6 +45,9 @@ export const CartSummary: React.FC<Props> = ({
 }) => {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(false);
+
+  // Nueva acción del store para aplicar precios del servidor
+  const applyServerPrices = useCartStore((s) => s.applyServerPrices);
 
   const onPressCheckout = async () => {
     if (loading) return;
@@ -80,8 +90,10 @@ export const CartSummary: React.FC<Props> = ({
             .map((i: any) => ({
               id: i.id,
               status: i.status,
-              availableQty: typeof i.availableQty === "number" ? i.availableQty : undefined,
-              dbPrice: typeof i.dbPrice === "number" ? i.dbPrice : undefined,
+              availableQty:
+                typeof i.availableQty === "number" ? i.availableQty : undefined,
+              dbPrice:
+                typeof i.dbPrice === "number" ? i.dbPrice : undefined,
               nombre_producto: i.nombre_producto,
             })) ?? [];
 
@@ -89,39 +101,41 @@ export const CartSummary: React.FC<Props> = ({
         return;
       }
 
-      // === OK: construir carrito para checkout con dbPrice (server) ===
+      // === OK: precios del servidor ===
       const serverItems = Array.isArray(res.items) ? res.items : [];
+
+      // 1) Actualiza precios en el store (UI/local) con dbPrice
+      applyServerPrices(serverItems);
+
+      // 2) Construye el cart para checkout con precios definitivos
       const serverItemsMap = new Map<number, any>(
         serverItems.map((s: any) => [Number(s.id), s])
       );
 
-      // Construimos el cart que consumirá Checkout
       const checkoutCart = items.map((i) => {
         const server = serverItemsMap.get(i.id);
         const priceFromServer =
-          server && typeof server.dbPrice === "number" ? server.dbPrice : i.price;
+          server && typeof server.dbPrice === "number"
+            ? server.dbPrice
+            : i.price;
 
         return {
           id: i.id,
           title: i.title,
           quantity: i.quantity,
-          // price que usará checkout (definitivo para cobro)
-          price: priceFromServer,
-          // opcional: enviamos dbPrice explícito por transparencia
-          dbPrice: typeof server?.dbPrice === "number" ? server.dbPrice : undefined,
-          // si quieres, puedes incluir la primera imagen u otros campos
+          price: priceFromServer, // definitivo para cobro
+          dbPrice:
+            typeof server?.dbPrice === "number" ? server.dbPrice : undefined,
           image: Array.isArray(i.images) ? i.images[0] : undefined,
         };
       });
 
-      // Totales recalculados con precios del server
       const subtotalServer = checkoutCart.reduce(
         (acc, it) => acc + Number(it.price) * Number(it.quantity),
         0
       );
       const totalServer = subtotalServer + (shipping || 0) + (taxes || 0);
 
-      // Enviamos al checkout. Usamos encodeURIComponent para objetos grandes.
       router.push({
         pathname: "/checkout",
         params: {
@@ -181,7 +195,11 @@ export const CartSummary: React.FC<Props> = ({
         ]}
         onPress={onPressCheckout}
         disabled={isCheckoutDisabled}
-        android_ripple={!isCheckoutDisabled ? { color: "rgba(255,255,255,0.2)" } : undefined}
+        android_ripple={
+          !isCheckoutDisabled
+            ? { color: "rgba(255,255,255,0.2)" }
+            : undefined
+        }
         accessibilityRole="button"
         accessibilityState={{ disabled: isCheckoutDisabled, busy: loading }}
         accessibilityLabel="Proceder al pago"
@@ -205,7 +223,9 @@ export const CartSummary: React.FC<Props> = ({
         ]}
         onPress={() => navigation.navigate("Products" as never)}
         disabled={isKeepDisabled}
-        android_ripple={!isKeepDisabled ? { color: "rgba(0,0,0,0.06)" } : undefined}
+        android_ripple={
+          !isKeepDisabled ? { color: "rgba(0,0,0,0.06)" } : undefined
+        }
         accessibilityRole="button"
         accessibilityState={{ disabled: isKeepDisabled, busy: loading }}
         accessibilityLabel="Seguir comprando"

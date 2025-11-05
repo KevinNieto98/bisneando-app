@@ -268,7 +268,7 @@ export default function CheckoutScreen() {
         />
 
         {/* Render del carrito recibido (o demo) */}
-        <CartSection items={items} />
+        <CartSection  />
       </ScrollView>
 
       <OrderSummary summary={summary} />

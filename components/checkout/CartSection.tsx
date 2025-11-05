@@ -1,17 +1,8 @@
-import React from "react";
+import { useAppStore } from "@/store/useAppStore";
+import { useCartStore } from "@/store/useCartStore";
+import React, { useMemo } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import EditButton from "../ui/EditButton";
-
-type CartLikeItem = {
-  id?: number | string;
-  title: string;
-  price: number;         // ya puede venir con dbPrice aplicado
-  image?: string;        // <- muchos flujos de checkout traen este
-  images?: string[];     // <- otros traen array
-  quantity?: number;     // preferido
-  qty?: number;          // alternativo
-  subtotal?: number;     // opcional
-};
 
 const toHNL = (n: number) =>
   new Intl.NumberFormat("es-HN", {
@@ -20,24 +11,42 @@ const toHNL = (n: number) =>
     maximumFractionDigits: 2,
   }).format(Number.isFinite(n) ? n : 0);
 
-const PLACEHOLDER = "https://via.placeholder.com/150";
+const PLACEHOLDER = "https://via.placeholder.com/300x300.png?text=Sin+imagen";
 
-// Toma primero `image`, si no, el primer string válido de `images[]`.
-const pickImageUri = (it: CartLikeItem): string => {
-  const one = typeof it.image === "string" ? it.image.trim() : "";
-  if (one) return one;
-
-  if (Array.isArray(it.images)) {
-    const firstValid = it.images.find(
-      (u) => typeof u === "string" && u.trim().length > 0
-    );
-    if (firstValid) return firstValid;
-  }
-  return PLACEHOLDER;
+// Mismo helper que usas en CartScreen
+const ensureUrls = (arr: unknown): string[] => {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((u) => (typeof u === "string" ? u.trim() : ""))
+    .filter((u) => u.length > 0);
 };
 
-export function CartSection({ items = [] as CartLikeItem[] }) {
-  const safeItems = Array.isArray(items) ? items : [];
+export function CartSection() {
+  // 1) Carrito (store)
+  const itemsRecord = useCartStore((s) => s.items);
+  // 2) Catálogo para fallback de imágenes (mismo que CartScreen)
+  const products = useAppStore((s) => s.products);
+
+  // Igual que en CartScreen: normalizamos items + resolvemos imágenes
+  const items = useMemo(() => {
+    const raw = Object.values(itemsRecord ?? {});
+    const byId = new Map(products?.map((p) => [p.id, p]) ?? []);
+
+    return raw.map((it) => {
+      const cartImgs = ensureUrls(it.images);
+      if (cartImgs.length > 0) {
+        return { ...it, images: cartImgs };
+      }
+
+      const prod = byId.get(it.id);
+      const prodImgs = ensureUrls(prod?.images);
+
+      return {
+        ...it,
+        images: prodImgs.length > 0 ? prodImgs : [PLACEHOLDER],
+      };
+    });
+  }, [itemsRecord, products]);
 
   return (
     <View style={styles.section}>
@@ -48,27 +57,17 @@ export function CartSection({ items = [] as CartLikeItem[] }) {
         <EditButton />
       </View>
 
-      {safeItems.length === 0 ? (
+      {items.length === 0 ? (
         <View style={{ paddingVertical: 12 }}>
           <Text style={{ color: "#6b7280" }}>Tu carrito está vacío.</Text>
         </View>
       ) : (
-        safeItems.map((product, idx) => {
-          const qty =
-            typeof product.quantity === "number"
-              ? product.quantity
-              : typeof product.qty === "number"
-              ? product.qty
-              : 0;
-
+        items.map((product, idx) => {
+          const qty = Number(product.quantity || 0);
           const unit = Number(product.price || 0);
-          const lineSubtotal =
-            typeof product.subtotal === "number"
-              ? product.subtotal
-              : unit * qty;
-
+          const lineSubtotal = unit * qty;
+          const uri = product.images?.[0] || PLACEHOLDER;
           const key = String(product.id ?? `line-${idx}`);
-          const uri = pickImageUri(product); // 👈 soporta image y images[0]
 
           return (
             <View key={key} style={styles.item}>
