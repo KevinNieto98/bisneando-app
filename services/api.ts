@@ -698,3 +698,23 @@ export async function validateCart(
     };
   }
 }
+
+
+// --------- Métodos de pago: activos ------------------------------------
+export type MetodoPago = {
+  id_metodo: number;
+  nombre?: string;
+  // otros campos que tengas...
+  // activo?: boolean; // opcional si igual ya te llegan filtrados
+};
+
+export async function fetchMetodosActivos(): Promise<MetodoPago[]> {
+  try {
+    const res = await apiFetch<{ ok: boolean; items: MetodoPago[] }>("/api/metodos");
+    if (res?.ok && Array.isArray(res.items)) return res.items;
+    return [];
+  } catch (error) {
+    console.error("Error fetchMetodosActivos:", error);
+    return [];
+  }
+}
