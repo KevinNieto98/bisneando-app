@@ -10,14 +10,11 @@ import { useAppStore } from "@/store/useAppStore";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   BackHandler,
   Platform,
   ScrollView,
   StatusBar,
-  StyleSheet,
-  Text,
-  View,
+  StyleSheet
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -25,7 +22,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/lib/supabase";
 import { Direccion, fetchDireccionesByUid } from "@/services/api";
 
-// 🔹 Confirmación al salir
+// 🔹 Modales
+import AlertModal from "@/components/ui/AlertModal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 
 // ✅ Necesario para detectar foco de pantalla
@@ -44,12 +42,13 @@ type Addr = {
   isPrincipal?: boolean;
 };
 
-const MIN_CARD_TOTAL = 1500;
-
 const toNumber = (v: any) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
+
+// 🔒 Regla: tope para pagos en efectivo
+const MAX_CASH_TOTAL = 1500;
 
 export default function CheckoutScreen() {
   const { user, loading } = useAuth();
@@ -59,7 +58,7 @@ export default function CheckoutScreen() {
   // Estado de checkout
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
 
-  // 🔸 Ahora control por ID de método (coincide con id_metodo en BD)
+  // 🔸 Control por ID de método (coincide con id_metodo en BD)
   const [selectedMethodId, setSelectedMethodId] = useState<number | null>(null);
   const [cardForm, setCardForm] = useState({ holder: "", number: "", expiry: "", cvv: "" });
 
@@ -71,8 +70,21 @@ export default function CheckoutScreen() {
   const [isAddrLoading, setIsAddrLoading] = useState<boolean>(true);
   const firstLoadRef = useRef(true);
 
+  // Loading métodos de pago (desde hijo)
+  const [isPmLoading, setIsPmLoading] = useState<boolean>(false);
+
   // Modal confirmación back
   const [showBackConfirm, setShowBackConfirm] = useState(false);
+
+  // Modal de alertas (reasons)
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [modalMessage, setModalMessage] = useState("");
+
+  const openReason = (msg: string) => {
+    setModalMessage(msg);
+    setIsModalVisible(true);
+  };
+  const handleModalClose = () => setIsModalVisible(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -207,6 +219,7 @@ export default function CheckoutScreen() {
         subtotal: toNumber(totalsFromParam.subtotal),
         taxes: toNumber(totalsFromParam.taxes),
         total: toNumber(totalsFromParam.total),
+        shipping: toNumber((totalsFromParam as any).shipping ?? 0),
       };
     }
 
@@ -215,18 +228,19 @@ export default function CheckoutScreen() {
       0
     );
     const taxes = Math.round(subtotal * 0.15 * 100) / 100;
-    const total = subtotal + taxes;
+    const shipping = 0; // ajusta si manejas envío
+    const total = subtotal + taxes + shipping;
 
-    return { itemsCount, subtotal, taxes, total };
+    return { itemsCount, subtotal, taxes, shipping, total };
   }, [items, totalsFromParam]);
 
   // ======== Selección del método (ID → code) ========
-  const paymentMethodCode: "efectivo" | "tarjeta" | "" = selectedMethodId == null
-    ? ""
-    : codeFromId(selectedMethodId);
+  const paymentMethodCode: "efectivo" | "tarjeta" | "" =
+    selectedMethodId == null ? "" : codeFromId(selectedMethodId);
 
-  // Validaciones
+  // Validaciones (usadas al intentar colocar orden)
   const isCard = selectedMethodId === 2;
+  const isCash = !isCard && !!paymentMethodCode; // efectivo = no tarjeta y hay método elegido
   const cardFormValid =
     !isCard ||
     (cardForm.holder.trim().length > 3 &&
@@ -234,50 +248,118 @@ export default function CheckoutScreen() {
       /\d{2}\/\d{2}/.test(cardForm.expiry) &&
       cardForm.cvv.length >= 3);
 
-  const meetsCardMin = !isCard || summary.total >= MIN_CARD_TOTAL;
+  // ======== LOG HELPERS ========
+  const buildLogPayload = (phase: "attempt" | "ready" | "blocked") => {
+    const now = new Date();
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const addressObj =
+      selectedAddressId != null ? addresses.find(a => a.id === selectedAddressId) ?? null : null;
 
-  const reasons: string[] = [];
-  if (!selectedAddressId) reasons.push("Selecciona una dirección.");
-  if (!paymentMethodCode) reasons.push("Selecciona un método de pago.");
-  if (isCard && summary.total < MIN_CARD_TOTAL) {
-    reasons.push(`El total debe ser al menos L ${MIN_CARD_TOTAL.toLocaleString("es-HN")} para tarjeta.`);
-  }
-  if (isCard && !cardFormValid) {
-    reasons.push("Completa correctamente los datos de la tarjeta.");
-  }
-
-  const canPlaceOrder = reasons.length === 0;
-
-  useEffect(() => {
-    console.log("[CHECKOUT] selectedMethodId:", selectedMethodId);
-    console.log("[CHECKOUT] paymentMethodCode:", paymentMethodCode);
-    console.log("[CHECKOUT] summary:", summary);
-    console.log("[CHECKOUT] meetsCardMin:", meetsCardMin, "MIN_CARD_TOTAL:", MIN_CARD_TOTAL);
-    console.log("[CHECKOUT] canPlaceOrder:", canPlaceOrder);
-    console.log("[CHECKOUT] DISABLE REASONS:", reasons);
-  }, [selectedMethodId, paymentMethodCode, summary, meetsCardMin, canPlaceOrder, reasons]);
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Cargando sesión...</Text>
-      </View>
-    );
-  }
-  if (!user) return null;
+    return {
+      phase,
+      timestamp_iso: now.toISOString(),
+      timestamp_local: now.toLocaleString("es-HN"),
+      timezone_device: tz,
+      platform: { os: Platform.OS, version: Platform.Version },
+      user: {
+        uid: user?.id ?? null,
+        email: (user as any)?.email ?? null,
+      },
+      cart: {
+        itemsCount: summary.itemsCount,
+        items: items.map(it => ({
+          id: it.id,
+          title: it.title,
+          price: Number(it.price),
+          quantity: Number(it.quantity),
+          subtotal: Number(it.subtotal ?? (Number(it.price) * Number(it.quantity))),
+          image: it.image ?? null,
+          dbPrice: typeof it.dbPrice === "number" ? it.dbPrice : null,
+        })),
+      },
+      address: addressObj
+        ? {
+            id: addressObj.id,
+            tipo_direccion: addressObj.tipo_direccion,
+            nombre_direccion: addressObj.nombre_direccion,
+            referencia: addressObj.referencia,
+            isPrincipal: !!addressObj.isPrincipal,
+          }
+        : null,
+      payment: {
+        selectedMethodId,
+        paymentMethodCode: paymentMethodCode || null,
+        isCard,
+        cardForm: isCard
+          ? {
+              holder: cardForm.holder,
+              numberMasked: cardForm.number.replace(/\d(?=\d{4})/g, "•"),
+              expiry: cardForm.expiry,
+              cvvMasked: cardForm.cvv ? "•••" : "",
+              valid: cardFormValid,
+            }
+          : null,
+      },
+      rules: {
+        maxCashTotal: MAX_CASH_TOTAL,
+      },
+      totals: {
+        subtotal: summary.subtotal,
+        taxes: summary.taxes,
+        shipping: summary.shipping,
+        total: summary.total,
+      },
+      loading: {
+        isAddrLoading,
+        isPmLoading,
+      },
+    };
+  };
 
   const handlePlaceOrder = () => {
-    if (isCard && summary.total < MIN_CARD_TOTAL) {
-      Alert.alert(
-        "Monto mínimo no alcanzado",
-        `Para pagar con tarjeta, el total debe ser al menos L ${MIN_CARD_TOTAL.toLocaleString("es-HN")}.`
+    // Siempre logeamos el intento con el estado actual
+    console.log("[CHECKOUT][PLACE_ORDER_ATTEMPT]", JSON.stringify(buildLogPayload("attempt"), null, 2));
+
+    // Si aún estamos cargando algo, avisar y loggear
+    if (isAddrLoading || isPmLoading) {
+      console.log("[CHECKOUT][BLOCKED_LOADING]", JSON.stringify(buildLogPayload("blocked"), null, 2));
+      openReason("Estamos cargando la información necesaria. Intenta nuevamente en unos segundos.");
+      return;
+    }
+
+    // 1) Método de pago no seleccionado
+    if (!paymentMethodCode) {
+      console.log("[CHECKOUT][BLOCKED_NO_PAYMENT]", JSON.stringify(buildLogPayload("blocked"), null, 2));
+      openReason("Debes elegir un método de pago para continuar.");
+      return;
+    }
+
+    // 2) Dirección no seleccionada
+    if (!selectedAddressId) {
+      console.log("[CHECKOUT][BLOCKED_NO_ADDRESS]", JSON.stringify(buildLogPayload("blocked"), null, 2));
+      openReason("Debes elegir una dirección de entrega para continuar.");
+      return;
+    }
+
+    // 2.5) Regla de EFECTIVO: total debe ser < 1500
+    if (isCash && summary.total >= MAX_CASH_TOTAL) {
+      console.log("[CHECKOUT][BLOCKED_CASH_CAP]", JSON.stringify(buildLogPayload("blocked"), null, 2));
+      openReason(
+        `Para pagar en efectivo, el total debe ser menor a L ${MAX_CASH_TOTAL.toLocaleString("es-HN")}. ` +
+        `Selecciona Tarjeta o ajusta tu carrito.`
       );
       return;
     }
-    if (!canPlaceOrder) {
-      Alert.alert("No podemos continuar", reasons.join("\n"));
+
+    // 3) Validación de tarjeta si aplica
+    if (isCard && !cardFormValid) {
+      console.log("[CHECKOUT][BLOCKED_CARD_INVALID]", JSON.stringify(buildLogPayload("blocked"), null, 2));
+      openReason("Completa correctamente los datos de la tarjeta.");
       return;
     }
+
+    // Todo listo
+    console.log("[CHECKOUT][ORDER_READY]", JSON.stringify(buildLogPayload("ready"), null, 2));
     router.push("/success");
   };
 
@@ -308,39 +390,22 @@ export default function CheckoutScreen() {
         <PaymentMethodSelector
           selectedMethodId={selectedMethodId}
           onSelectMethod={(id, code) => {
-            setSelectedMethodId(id); // 👈 control por ID
-            // Si quieres ver el code:
+            setSelectedMethodId(id);
             console.log("[PAYMENT] selected:", id, code);
           }}
           cardForm={cardForm}
           setCardForm={setCardForm}
+          onLoadingChange={setIsPmLoading}
         />
 
-        {isCard && summary.total < MIN_CARD_TOTAL && (
-          <View style={styles.cardMinBox}>
-            <Text style={styles.cardMinText}>
-              Monto mínimo para pagar con tarjeta: L{" "}
-              {MIN_CARD_TOTAL.toLocaleString("es-HN")}
-            </Text>
-          </View>
-        )}
-
-        {reasons.length > 0 && (
-          <View style={styles.reasonsBox}>
-            {reasons.map((r, i) => (
-              <Text key={i} style={styles.reasonsText}>• {r}</Text>
-            ))}
-          </View>
-        )}
-
+        {/* No mostramos reasons en la UI; solo AlertModal cuando intenta colocar orden */}
         <CartSection />
       </ScrollView>
 
       <OrderSummary summary={summary} />
 
       <PlaceOrderButton
-        variant={isCard && !meetsCardMin ? "danger" : "warning"}
-        disabled={!canPlaceOrder}
+        variant="warning"
         onPress={handlePlaceOrder}
       />
 
@@ -356,6 +421,13 @@ export default function CheckoutScreen() {
           router.replace("/(tabs)/cart");
         }}
         onCancel={() => setShowBackConfirm(false)}
+      />
+
+      <AlertModal
+        visible={isModalVisible}
+        title="¡Ups!"
+        message={modalMessage}
+        onClose={handleModalClose}
       />
     </SafeAreaView>
   );
@@ -383,40 +455,6 @@ const styles = StyleSheet.create({
     ...androidElevation,
   },
   scrollContent: { padding: 2 },
-
-  // Aviso mínimo tarjeta
-  cardMinBox: {
-    marginHorizontal: 10,
-    marginTop: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: "#fef3c7", // amber-100
-    borderColor: "#f59e0b",     // amber-500
-    borderWidth: 1,
-    borderRadius: 10,
-  },
-  cardMinText: {
-    color: "#92400e",           // amber-900
-    fontWeight: "700",
-    fontSize: 13,
-  },
-
-  // Razones para bloquear
-  reasonsBox: {
-    marginHorizontal: 10,
-    marginTop: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: "#fee2e2", // red-100
-    borderColor: "#ef4444",     // red-500
-    borderWidth: 1,
-    borderRadius: 10,
-  },
-  reasonsText: {
-    color: "#991b1b",           // red-900
-    fontWeight: "700",
-    fontSize: 12,
-  },
 
   loadingContainer: {
     flex: 1,

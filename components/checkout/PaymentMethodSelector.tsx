@@ -34,14 +34,8 @@ const BRAND_YELLOW = "#facc15";
 const AMBER_100 = "#fef3c7";
 const AMBER_500 = "#f59e0b";
 
-// 🔸 fallback tipado correctamente
-const FALLBACK_METHODS: UiMetodo[] = [
-  { id: 1, code: "efectivo", label: "Efectivo", icon: "Wallet" },
-  { id: 2, code: "tarjeta", label: "Tarjeta de Crédito", icon: "CreditCard" },
-];
-
 const toStr = (v: unknown) => (typeof v === "string" ? v.trim() : "");
-const toNum = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
+const toNum = (v: unknown) => (typeof v === "number" ? v : Number(v));
 
 const iconNameByCode: Record<UiMetodo["code"], string> = {
   efectivo: "Wallet",
@@ -83,6 +77,9 @@ type Props = {
   /** Formulario de tarjeta (controlado por el padre) */
   cardForm: { holder: string; number: string; expiry: string; cvv: string };
   setCardForm: React.Dispatch<React.SetStateAction<{ holder: string; number: string; expiry: string; cvv: string }>>;
+
+  /** Reporta el estado de carga al padre */
+  onLoadingChange?: (loading: boolean) => void;
 };
 
 export function PaymentMethodSelector({
@@ -90,16 +87,22 @@ export function PaymentMethodSelector({
   onSelectMethod,
   cardForm,
   setCardForm,
+  onLoadingChange,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [methods, setMethods] = useState<UiMetodo[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  // Carga métodos activos
+  // Carga métodos activos (solo API; sin fallbacks ni autoselección)
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         setLoading(true);
+        onLoadingChange?.(true);
+        setError(null);
+        setMethods([]);
+
         const raw = await fetchMetodosActivos();
         const parsed = (Array.isArray(raw) ? raw : [])
           .map(normalizeMetodo)
@@ -107,31 +110,31 @@ export function PaymentMethodSelector({
 
         if (!mounted) return;
 
-        const list: UiMetodo[] = parsed.length ? parsed : FALLBACK_METHODS;
-        setMethods(list);
-
-        // Inicializa selección si el padre aún no tiene nada
-        if (selectedMethodId == null && list.length > 0) {
-          const first = list[0];
-          onSelectMethod(first.id, first.code);
+        if (parsed.length === 0) {
+          setError("No hay métodos de pago activos por el momento.");
+          setMethods([]);
+          return;
         }
+
+        setMethods(parsed);
       } catch (e) {
         console.error("PaymentMethodSelector: error cargando métodos:", e);
         if (mounted) {
-          setMethods(FALLBACK_METHODS);
-          if (selectedMethodId == null) {
-            onSelectMethod(FALLBACK_METHODS[0].id, FALLBACK_METHODS[0].code);
-          }
+          setError("No se pudieron mostrar los métodos de pago.");
+          setMethods([]);
         }
       } finally {
-        mounted && setLoading(false);
+        if (mounted) {
+          setLoading(false);
+          onLoadingChange?.(false);
+        }
       }
     })();
     return () => {
       mounted = false;
+      onLoadingChange?.(false);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [onLoadingChange]);
 
   // Método seleccionado por ID (único)
   const selected = useMemo(
@@ -205,6 +208,10 @@ export function PaymentMethodSelector({
           <ActivityIndicator />
           <Text style={styles.loadingText}>Cargando métodos…</Text>
         </View>
+      ) : error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
       ) : (
         <FlatList
           data={methods}
@@ -275,6 +282,16 @@ const styles = StyleSheet.create({
 
   loadingBox: { paddingVertical: 14, alignItems: "center" },
   loadingText: { color: "#6b7280", fontSize: 13, marginTop: 8 },
+
+  errorBox: {
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: "#fee2e2",
+    borderWidth: 1,
+    borderColor: "#ef4444",
+  },
+  errorText: { color: "#991b1b", fontSize: 13, fontWeight: "700" },
 
   // ===== GRID (2 por fila) =====
   gridRow: { justifyContent: "space-between" },
