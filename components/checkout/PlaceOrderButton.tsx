@@ -1,18 +1,27 @@
 // components/checkout/PlaceOrderButton.tsx
 import { router } from "expo-router";
 import React from "react";
-import { Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
+} from "react-native";
 import Icono from "../ui/Icon.native";
 
 type Variant = "primary" | "warning" | "success" | "danger";
 
 interface PlaceOrderButtonProps {
   disabled?: boolean;
+  loading?: boolean;              // ⬅️ NUEVO: muestra spinner y bloquea el botón
   onPress?: () => void;
-  title?: string;                 // 👈 nuevo
-  iconName?: string;              // 👈 nuevo (para Icono)
-  variant?: Variant;              // 👈 nuevo
-  style?: ViewStyle;              // 👈 nuevo (para ajustar ancho/márgenes)
+  title?: string;
+  titleWhileLoading?: string;     // ⬅️ NUEVO: texto mientras carga
+  iconName?: string;
+  variant?: Variant;
+  style?: ViewStyle;
 }
 
 const COLORS: Record<Variant, { bg: string; pressed: string; ripple: string }> = {
@@ -24,14 +33,18 @@ const COLORS: Record<Variant, { bg: string; pressed: string; ripple: string }> =
 
 export function PlaceOrderButton({
   disabled = false,
+  loading = false,                       // ⬅️ default
   onPress,
   title = "Colocar orden",
+  titleWhileLoading = "Colocando orden...",
   iconName = "ShoppingCart",
   variant = "primary",
   style,
 }: PlaceOrderButtonProps) {
+  const isDisabled = disabled || loading;
+
   const handlePress = () => {
-    if (disabled) return;
+    if (isDisabled) return;
     if (onPress) onPress();
     else router.push("/success");
   };
@@ -40,17 +53,28 @@ export function PlaceOrderButton({
     <Pressable
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: pressed && !disabled ? COLORS[variant].pressed : COLORS[variant].bg },
-        disabled && styles.disabled,
+        {
+          backgroundColor:
+            pressed && !isDisabled ? COLORS[variant].pressed : COLORS[variant].bg,
+        },
+        isDisabled && styles.disabled,
         style,
       ]}
-      android_ripple={{ color: COLORS[variant].ripple }}
+      android_ripple={isDisabled ? undefined : { color: COLORS[variant].ripple }}
       onPress={handlePress}
-      disabled={disabled}
+      disabled={isDisabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
     >
       <View style={styles.content}>
-        <Icono name={iconName as any} size={18} color="white" />
-        <Text style={styles.text}>{title}</Text>
+        {loading ? (
+          <ActivityIndicator color="#fff" size="small" />
+        ) : (
+          <Icono name={iconName as any} size={18} color="white" />
+        )}
+        <Text style={styles.text}>
+          {loading ? titleWhileLoading : title}
+        </Text>
       </View>
     </Pressable>
   );
@@ -66,7 +90,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 30,
   },
-  disabled: { opacity: 0.5 },
+  disabled: { opacity: 0.6 },
   content: { flexDirection: "row", alignItems: "center", gap: 8 },
   text: { color: "white", fontWeight: "700", fontSize: 16 },
 });

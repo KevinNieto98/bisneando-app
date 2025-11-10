@@ -7,6 +7,7 @@ import { PlaceOrderButton } from "@/components/checkout/PlaceOrderButton";
 import { ProductHeader } from "@/components/product/ProductHeader";
 import useAuth from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
+import { useCartStore } from "@/store/useCartStore";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -20,7 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 // 🔹 Direcciones reales
 import { supabase } from "@/lib/supabase";
-import { Direccion, fetchDireccionesByUid } from "@/services/api";
+import { createOrderRequest, Direccion, fetchDireccionesByUid } from "@/services/api";
 
 // 🔹 Modales
 import AlertModal from "@/components/ui/AlertModal";
@@ -53,6 +54,8 @@ const MAX_CASH_TOTAL = 1500;
 export default function CheckoutScreen() {
   const { user, loading } = useAuth();
   const { products, loadProducts } = useAppStore();
+  const clearCart = useCartStore((s) => s.clear);
+
   const { cart: cartParam, totals: totalsParam } = useLocalSearchParams<CheckoutParams>();
 
   // Estado de checkout
@@ -72,6 +75,9 @@ export default function CheckoutScreen() {
 
   // Loading métodos de pago (desde hijo)
   const [isPmLoading, setIsPmLoading] = useState<boolean>(false);
+
+  // Envío de orden (evitar doble tap)
+  const [isPlacing, setIsPlacing] = useState(false);
 
   // Modal confirmación back
   const [showBackConfirm, setShowBackConfirm] = useState(false);
@@ -240,7 +246,7 @@ export default function CheckoutScreen() {
 
   // Validaciones (usadas al intentar colocar orden)
   const isCard = selectedMethodId === 2;
-  const isCash = !isCard && !!paymentMethodCode; // efectivo = no tarjeta y hay método elegido
+  const isCash = !isCard && !!paymentMethodCode;
   const cardFormValid =
     !isCard ||
     (cardForm.holder.trim().length > 3 &&
@@ -316,33 +322,68 @@ export default function CheckoutScreen() {
     };
   };
 
-  const handlePlaceOrder = () => {
-    // Siempre logeamos el intento con el estado actual
+  // ======== Armado del payload para la API /api/orders ========
+  const buildOrderPayload = () => {
+    const actividadObs = [
+      selectedAddressId ? `addr_id=${selectedAddressId}` : null,
+      selectedMethodId != null ? `pm_id=${selectedMethodId}` : null,
+    ].filter(Boolean).join(" | ");
+
+    return {
+      id_status: 1, // creada (ajusta si usas otro estado inicial)
+      uid: user?.id ?? undefined,                // tbl_orders_head.uid es NOT NULL
+      usuario_actualiza: (user as any)?.email ?? user?.id ?? null,
+      tipo_dispositivo: Platform.OS,             // "ios" | "android"
+      observacion: null,
+      actividad_observacion: actividadObs || null,
+
+      // Totales del resumen
+      delivery: Number(summary.shipping ?? 0),
+      isv: Number(summary.taxes ?? 0),
+      ajuste: 0,
+
+      // Items del carrito
+      items: items.map((it) => ({
+        id_producto: Number(it.id),
+        qty: Number(it.quantity),
+        precio: Number(it.price),
+        // id_bodega: ... // pásalo si lo tienes
+      })),
+    } as const;
+  };
+
+  // ======== Enviar orden ========
+  const handlePlaceOrder = async () => {
     console.log("[CHECKOUT][PLACE_ORDER_ATTEMPT]", JSON.stringify(buildLogPayload("attempt"), null, 2));
 
-    // Si aún estamos cargando algo, avisar y loggear
     if (isAddrLoading || isPmLoading) {
       console.log("[CHECKOUT][BLOCKED_LOADING]", JSON.stringify(buildLogPayload("blocked"), null, 2));
       openReason("Estamos cargando la información necesaria. Intenta nuevamente en unos segundos.");
       return;
     }
 
-    // 1) Método de pago no seleccionado
     if (!paymentMethodCode) {
       console.log("[CHECKOUT][BLOCKED_NO_PAYMENT]", JSON.stringify(buildLogPayload("blocked"), null, 2));
       openReason("Debes elegir un método de pago para continuar.");
       return;
     }
 
-    // 2) Dirección no seleccionada
     if (!selectedAddressId) {
       console.log("[CHECKOUT][BLOCKED_NO_ADDRESS]", JSON.stringify(buildLogPayload("blocked"), null, 2));
       openReason("Debes elegir una dirección de entrega para continuar.");
       return;
     }
 
-    // 2.5) Regla de EFECTIVO: total debe ser < 1500
-    if (isCash && summary.total >= MAX_CASH_TOTAL) {
+    const isCardLocal = selectedMethodId === 2;
+    const isCashLocal = !isCardLocal && !!paymentMethodCode;
+    const cardFormValidLocal =
+      !isCardLocal ||
+      (cardForm.holder.trim().length > 3 &&
+        cardForm.number.replace(/\s/g, "").length >= 15 &&
+        /\d{2}\/\d{2}/.test(cardForm.expiry) &&
+        cardForm.cvv.length >= 3);
+
+    if (isCashLocal && summary.total >= MAX_CASH_TOTAL) {
       console.log("[CHECKOUT][BLOCKED_CASH_CAP]", JSON.stringify(buildLogPayload("blocked"), null, 2));
       openReason(
         `Para pagar en efectivo, el total debe ser menor a L ${MAX_CASH_TOTAL.toLocaleString("es-HN")}. ` +
@@ -351,16 +392,38 @@ export default function CheckoutScreen() {
       return;
     }
 
-    // 3) Validación de tarjeta si aplica
-    if (isCard && !cardFormValid) {
+    if (isCardLocal && !cardFormValidLocal) {
       console.log("[CHECKOUT][BLOCKED_CARD_INVALID]", JSON.stringify(buildLogPayload("blocked"), null, 2));
       openReason("Completa correctamente los datos de la tarjeta.");
       return;
     }
 
-    // Todo listo
     console.log("[CHECKOUT][ORDER_READY]", JSON.stringify(buildLogPayload("ready"), null, 2));
-    router.push("/success");
+
+    if (isPlacing) return; // evita doble tap
+    setIsPlacing(true);
+    try {
+      const payload = buildOrderPayload();
+      const resp = await createOrderRequest(payload);
+
+      if ("data" in resp && resp.data?.id_order) {
+        clearCart(); // 🧹 vaciar carrito
+        router.push({
+          pathname: "/success",
+          params: {
+            id_order: String(resp.data.id_order),
+            total: String(summary.total),
+          },
+        });
+        return;
+      }
+
+      openReason(resp.message || "No se pudo crear la orden.");
+    } catch (e: any) {
+      openReason(e?.message ?? "No se pudo crear la orden por un error inesperado.");
+    } finally {
+      setIsPlacing(false);
+    }
   };
 
   return (
@@ -407,6 +470,10 @@ export default function CheckoutScreen() {
       <PlaceOrderButton
         variant="warning"
         onPress={handlePlaceOrder}
+        disabled={isPlacing}   // ⬅️ BLOQUEA mientras esperamos la API
+        loading={isPlacing}    // ⬅️ Muestra spinner si tu botón lo soporta
+        // fallback visual si tu botón no soporta loading:
+        // style={[isPlacing && { opacity: 0.6 }]}
       />
 
       <ConfirmModal

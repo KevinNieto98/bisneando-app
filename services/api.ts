@@ -718,3 +718,72 @@ export async function fetchMetodosActivos(): Promise<MetodoPago[]> {
     return [];
   }
 }
+
+
+// --------- Orders: crear (POST /api/orders) ----------------------------
+
+export type OrderItemInput = {
+  id_producto: number;
+  qty: number;
+  precio: number;
+  id_bodega?: number | null;
+};
+
+export type CreateOrderPayload = {
+  id_status: number;               // requerido
+  items: OrderItemInput[];         // requerido
+
+  // opcionales del header
+  uid?: string;
+  delivery?: number;
+  isv?: number;
+  ajuste?: number;
+  num_factura?: string | null;
+  rtn?: string | null;
+  latitud?: number | null;
+  longitud?: number | null;
+  tipo_dispositivo?: string | null;
+  observacion?: string | null;
+  usuario_actualiza?: string | null;
+
+  // actividad inicial (opcional)
+  actividad_observacion?: string | null;
+};
+
+export type CreateOrderOk = {
+  message: string;                 // "Orden creada correctamente."
+  reqId: string;
+  data: {
+    id_order: number;
+    det_count: number;
+    id_act?: number;
+  };
+};
+
+export type CreateOrderErr = { message: string; reqId?: string };
+
+export type CreateOrderResp = CreateOrderOk | CreateOrderErr;
+
+/**
+ * Crea una orden llamando a POST /api/orders
+ * - Envía Authorization si pasas un token (opcional)
+ */
+export async function createOrderRequest(
+  payload: CreateOrderPayload,
+  token?: string
+): Promise<CreateOrderResp> {
+  try {
+    const data = await apiFetch<CreateOrderOk>("/api/orders", {
+      method: "POST",
+      headers: { ...withAuthHeader(token) },
+      body: payload,
+      timeoutMs: 15000, // opcional, un poco más alto por el insert múltiple
+    });
+    // Normalización defensiva
+    if (data?.data?.id_order) return data;
+    return { message: "Respuesta inesperada del servidor." };
+  } catch (error: any) {
+    // Mantén el contrato CreateOrderResp para que el front no truene
+    return { message: error?.message ?? "No se pudo crear la orden." };
+  }
+}

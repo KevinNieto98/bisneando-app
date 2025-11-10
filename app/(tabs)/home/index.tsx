@@ -5,12 +5,13 @@ import { ProductSimilares } from "@/components/ProductSimilares";
 
 import Icono from "@/components/ui/Icon.native";
 import Title from "@/components/ui/Title.native";
-import useAuth from "@/hooks/useAuth"; // 👈 importamos el hook
+import useAuth from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
 import { router, useLocalSearchParams, usePathname } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Image,
   Platform,
   StatusBar,
@@ -31,26 +32,28 @@ export default function HomeScreen() {
     loadProducts,
   } = useAppStore();
 
-  const { user } = useAuth(); // 👈 obtenemos el usuario actual
+  const { user } = useAuth();
 
-  // 👇 Banner "Bienvenido a Bisneando" (cuando venimos de registro)
   const { welcome } = useLocalSearchParams();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const [showBanner, setShowBanner] = useState(welcome === "1" || welcome === "true");
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 👇 controla si el padre puede scrollear (para no pelear con el horizontal)
+  const [parentScroll, setParentScroll] = useState(true);
+
   useEffect(() => {
+    // carga inicial
     loadCategories();
     loadProducts();
   }, []);
 
   useEffect(() => {
     if (showBanner) {
-      // ocultar en 5s y limpiar el query param
       bannerTimerRef.current = setTimeout(() => {
         setShowBanner(false);
-        router.replace(pathname as any); // quita ?welcome=1 para que no reaparezca
+        router.replace(pathname as any);
       }, 5000);
     }
     return () => {
@@ -58,12 +61,18 @@ export default function HomeScreen() {
     };
   }, [showBanner]);
 
+  // Pull-to-refresh (usa las mismas actions)
+  const onRefresh = () => {
+    loadCategories();
+    loadProducts();
+  };
+
+  const refreshing = loadingCategories || loadingProducts;
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Notch amarillo */}
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
 
-      {/* Banner de bienvenida (overlay superior) */}
       {showBanner && (
         <View style={[styles.successBanner, { paddingTop: insets.top + 8 }]}>
           <Text style={styles.successText}>Bienvenido a Bisneando</Text>
@@ -72,14 +81,12 @@ export default function HomeScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        {/* Logo */}
         <Image
           source={require("@/assets/images/bisneando.png")}
           style={styles.logo}
           resizeMode="contain"
         />
 
-        {/* 👇 Botón notificación solo si está logueado */}
         {user && (
           <TouchableOpacity
             style={styles.notificationButton}
@@ -90,38 +97,65 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {/* Contenido */}
+      {/* Contenedor con fondo blanco y bordes redondeados */}
       <View
         style={[
           styles.content,
           Platform.OS === "android" && { marginTop: StatusBar.currentHeight },
         ]}
       >
-        {/* Banner */}
-        <CarouselBanner />
+        {/* 👇 FlatList principal (vertical) con pull-to-refresh */}
+        <FlatList
+          data={[{ key: "header" }]}           // lista dummy de un solo ítem
+          keyExtractor={(item) => item.key}
+          renderItem={null as any}             // no renderiza filas; usamos solo el header
 
-        {/* Categorías */}
-        <Title
-          icon={<Icono name="Tags" size={20} color="#52525b" />}
-          title="Categorías"
-        />
-        {loadingCategories ? (
-          <CategorySkeleton />
-        ) : (
-          <CategorySection categories={categories} />
-        )}
+          // 👇 control fino del scroll del padre (iOS: evita roces con horizontal)
+          scrollEnabled={parentScroll}
+          directionalLockEnabled
+          alwaysBounceVertical
 
-        {/* Productos Destacados */}
-        <Title
-          icon={<Icono name="Star" size={20} color="#52525b" />}
-          title="Productos Destacados"
-          style={{ marginTop: 16 }}
+          contentContainerStyle={{ paddingBottom: 24 }}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          keyboardShouldPersistTaps="handled"
+          removeClippedSubviews
+
+          ListHeaderComponent={
+            <View>
+              {/* Banner */}
+              <CarouselBanner />
+
+              {/* Categorías */}
+              <Title
+                icon={<Icono name="Tags" size={20} color="#52525b" />}
+                title="Categorías"
+              />
+              {loadingCategories ? (
+                <CategorySkeleton />
+              ) : (
+                <CategorySection
+                  categories={categories}
+                  // 👇 desactiva/activa scroll del padre mientras se usa el carrusel
+                  onGestureStart={() => setParentScroll(false)}
+                  onGestureEnd={() => setParentScroll(true)}
+                />
+              )}
+
+              {/* Productos Destacados */}
+              <Title
+                icon={<Icono name="Star" size={20} color="#52525b" />}
+                title="Productos Destacados"
+                style={{ marginTop: 16 }}
+              />
+              {loadingProducts ? (
+                <ActivityIndicator size="large" color="#000" />
+              ) : (
+                <ProductSimilares products={products} />
+              )}
+            </View>
+          }
         />
-        {loadingProducts ? (
-          <ActivityIndicator size="large" color="#000" />
-        ) : (
-          <ProductSimilares products={products} />
-        )}
       </View>
     </SafeAreaView>
   );
@@ -161,7 +195,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 16,
+    padding: 16, // mantenemos el padding aquí
   },
   successBanner: {
     position: "absolute",

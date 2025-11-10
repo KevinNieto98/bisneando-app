@@ -1,11 +1,13 @@
 import { Category } from "@/store/useAppStore";
-import { useRouter } from "expo-router";
+import { router } from "expo-router";
 import React from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Icono from "./ui/Icon.native";
 
 type Props = {
   categories: Category[];
+  onGestureStart?: () => void; // avisa al padre que comienza gesto horizontal
+  onGestureEnd?: () => void;   // avisa al padre que terminó el gesto
 };
 
 // 🎨 Paleta de colores pastel
@@ -18,29 +20,39 @@ const pastelColors = [
   "#A5F3FC", // celeste pastel
 ];
 
-const CategorySection: React.FC<Props> = ({ categories }) => {
-  const router = useRouter();
-
+const CategorySection: React.FC<Props> = ({
+  categories,
+  onGestureStart,
+  onGestureEnd,
+}) => {
   const goToExplore = (categoryId?: number) => {
     router.push({
-      pathname: "/(tabs)/explore", // 👈 ajusta si tu ruta difiere
+      pathname: "/(tabs)/explore",
       params: categoryId != null ? { categoryId: String(categoryId) } : {},
     });
   };
 
   return (
     <View style={{ marginTop: 6, paddingBottom: 5 }}>
-      <FlatList
-        data={categories}
+      <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        keyExtractor={(item) => item.id_categoria.toString()}
         contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 1 }}
-        renderItem={({ item, index }) => {
+        directionalLockEnabled     // iOS: respeta la dirección del gesto
+        // 👇 coordina con el padre para que no “robe” el gesto/pull-to-refresh
+        onScrollBeginDrag={onGestureStart}
+        onMomentumScrollBegin={onGestureStart}
+        onScrollEndDrag={onGestureEnd}
+        onMomentumScrollEnd={onGestureEnd}
+        onTouchStart={onGestureStart}
+        onTouchEnd={onGestureEnd}
+      >
+        {categories.map((item, index) => {
           const bgColor = pastelColors[index % pastelColors.length];
 
           return (
             <Pressable
+              key={item.id_categoria}
               style={({ pressed }) => [
                 styles.card,
                 {
@@ -48,7 +60,10 @@ const CategorySection: React.FC<Props> = ({ categories }) => {
                   transform: [{ scale: pressed ? 0.96 : 1 }],
                 },
               ]}
-              onPress={() => goToExplore(item.id_categoria)} // 👈 manda la categoría
+              // 👇 robustecer el tap contra micro-desplazamientos
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              pressRetentionOffset={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => goToExplore(item.id_categoria)}
             >
               <View style={styles.iconWrapper}>
                 <Icono name={item.icono || "Tag"} size={22} color="black" />
@@ -56,25 +71,27 @@ const CategorySection: React.FC<Props> = ({ categories }) => {
               <Text style={styles.text}>{item.nombre_categoria}</Text>
             </Pressable>
           );
-        }}
-        ListFooterComponent={
-          <Pressable
-            style={({ pressed }) => [
-              styles.card,
-              {
-                backgroundColor: "#f4f4f5",
-                transform: [{ scale: pressed ? 0.95 : 1 }],
-              },
-            ]}
-            onPress={() => goToExplore()} // 👈 sin categoría => “Todo”
-          >
-            <View style={styles.iconWrapper}>
-              <Icono name="EllipsisHorizontal" size={22} color="black" />
-            </View>
-            <Text style={styles.text}>Ver más</Text>
-          </Pressable>
-        }
-      />
+        })}
+
+        {/* Footer: Ver más */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.card,
+            {
+              backgroundColor: "#f4f4f5",
+              transform: [{ scale: pressed ? 0.95 : 1 }],
+            },
+          ]}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          pressRetentionOffset={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={() => goToExplore()} // sin categoría => “Todo”
+        >
+          <View style={styles.iconWrapper}>
+            <Icono name="EllipsisHorizontal" size={22} color="black" />
+          </View>
+          <Text style={styles.text}>Ver más</Text>
+        </Pressable>
+      </ScrollView>
     </View>
   );
 };

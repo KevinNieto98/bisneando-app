@@ -106,17 +106,16 @@ export const AddressSelector: React.FC<Props> = ({
     const meta = tipoMeta(item.tipo_direccion);
     const selected = selectedId === item.id;
 
-    const highlighted = selected || item.isPrincipal;
+    // ✅ Solo resalta la tarjeta SELECCIONADA (no la principal)
     const cardStyles = [
       styles.card,
-      highlighted && {
+      selected && {
         backgroundColor: "#fef3c7", // amber-100
         borderColor: "#f59e0b",     // amber-500
         shadowColor: "#f59e0b",
         shadowOpacity: 0.2,
         shadowRadius: 6,
         shadowOffset: { width: 0, height: 2 },
-        // 👇 ANTES estaba `: null` y eso hacía spread de null -> TypeError
         ...(Platform.OS === "android" ? { elevation: 2 } : {}),
       },
     ];
@@ -124,7 +123,7 @@ export const AddressSelector: React.FC<Props> = ({
     return (
       <View style={styles.gridItem}>
         <TouchableOpacity activeOpacity={0.9} onPress={() => onSelect(item.id)} style={cardStyles}>
-          {/* badge DENTRO de la tarjeta, arriba derecha */}
+          {/* badge DENTRO de la tarjeta, arriba derecha (informativo, no selección) */}
           {item.isPrincipal && (
             <View style={[styles.badge, styles.badgeInsideTop]}>
               <Ionicons name="star" size={10} color="#fff" />
@@ -132,7 +131,7 @@ export const AddressSelector: React.FC<Props> = ({
             </View>
           )}
 
-          {/* contenido centrado verticalmente, columnas más pegadas */}
+          {/* contenido */}
           <View style={styles.cardHeader}>
             <View style={[styles.iconCircle, styles.iconCircleTight, { backgroundColor: meta.tint }]}>
               <Ionicons name={meta.icon} size={18} color="#111827" />
@@ -146,6 +145,15 @@ export const AddressSelector: React.FC<Props> = ({
                 <Text style={styles.cardRef} numberOfLines={1}>
                   {item.referencia}
                 </Text>
+              )}
+            </View>
+
+            {/* ✅ indicador visual claro de selección en grid */}
+            <View style={{ marginLeft: 6 }}>
+              {selected ? (
+                <Ionicons name="checkmark-circle" size={18} color="#f59e0b" />
+              ) : (
+                <Ionicons name="ellipse-outline" size={18} color="#d1d5db" />
               )}
             </View>
           </View>
@@ -164,6 +172,7 @@ export const AddressSelector: React.FC<Props> = ({
       renderItem={renderGridItem}
       scrollEnabled={false}
       ListEmptyComponent={null}
+      extraData={selectedId} // 👈 forza re-render claro al cambiar selección
     />
   );
 
@@ -265,7 +274,7 @@ const styles = StyleSheet.create({
   },
 
   texts: { flex: 1, minWidth: 0 },
-  topLine: { flexDirection: "row", alignItems: "center", flexShrink: 1 },
+  topLine: { flexDirection: "row", alignItems: "center", flexShrink: 1, gap: 6 },
   name: { fontSize: 14, fontWeight: "700", color: "#1f2937", flexShrink: 1 },
   ref: { fontSize: 12, color: "#6b7280", marginTop: 2 },
 
@@ -281,13 +290,13 @@ const styles = StyleSheet.create({
 
   radioWrap: { marginLeft: 8 },
 
-  // ===== GRID (2 por fila, badge dentro y columnas pegadas) =====
+  // ===== GRID =====
   gridRow: {
     justifyContent: "space-between",
   },
   gridItem: {
-    width: "48%",          // espacio ligero entre columnas
-    marginBottom: 12,      // espacio vertical entre tarjetas
+    width: "48%",
+    marginBottom: 12,
   },
   card: {
     width: "100%",
@@ -296,7 +305,7 @@ const styles = StyleSheet.create({
     borderColor: "#e5e7eb",
     borderRadius: 14,
     paddingVertical: 8,
-    paddingHorizontal: 10,   // 👈 más compacto dentro de la tarjeta
+    paddingHorizontal: 10,
     minHeight: 88,
     justifyContent: "center",
     position: "relative",
@@ -304,7 +313,7 @@ const styles = StyleSheet.create({
   badgeInsideTop: {
     position: "absolute",
     top: 8,
-    right: 8,               // esquina superior derecha
+    right: 8,
     zIndex: 1,
   },
   cardHeader: {
@@ -312,7 +321,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   iconCircleTight: {
-    marginRight: 6,         // 👈 menos espacio entre icono y textos
+    marginRight: 6,
   },
   cardTextCol: {
     flex: 1,
@@ -322,12 +331,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: "#1f2937",
-    marginLeft: 4,          // 👈 más pegado al icono
+    marginLeft: 4,
   },
   cardRef: {
     fontSize: 12,
     color: "#6b7280",
-    marginLeft: 4,          // 👈 más pegado al icono
+    marginLeft: 4,
     marginTop: 1,
   },
 });
