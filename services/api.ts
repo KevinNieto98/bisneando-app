@@ -787,3 +787,73 @@ export async function createOrderRequest(
     return { message: error?.message ?? "No se pudo crear la orden." };
   }
 }
+
+
+// --------- Orders: listar encabezados por uid (GET /api/orders/head) -----
+
+export type OrderHeadApi = {
+  id_order: number;
+  uid: string;
+  id_status: number | null;
+  id_metodo: number | null;
+  id_colonia: number | null;
+  id_max_log: number | null;
+  qty: number;
+  sub_total: number;
+  isv: number;
+  delivery: number;
+  ajuste: number;
+  total: number;
+  num_factura: string | null;
+  rtn: string | null;
+  latitud: string | null;
+  longitud: string | null;
+  observacion: string | null;
+  usuario_actualiza: string | null;
+  fecha_creacion: string;
+  fecha_actualizacion?: string | null;
+  // campos enriquecidos que devuelve tu getOrdersHeadAction:
+  status: string | null;
+  nombre_colonia: string | null;
+  usuario: string | null;
+  metodo_pago: string | null;
+};
+
+type OrdersHeadApiResponse = {
+  message: string;
+  reqId?: string;
+  data: OrderHeadApi[];
+};
+
+/**
+ * Trae las órdenes (encabezados) de un usuario dado su uid.
+ * Llama a GET /api/orders/head?uid=<uid>
+ */
+export async function fetchOrdersHeadByUid(
+  uid: string,
+  token?: string
+): Promise<OrderHeadApi[]> {
+  if (!uid || uid.trim() === "") {
+    console.warn("fetchOrdersHeadByUid: uid vacío o inválido");
+    throw new Error("Debe enviar un uid válido.");
+  }
+
+  try {
+    const qs = new URLSearchParams({ uid }).toString();
+
+    const res = await apiFetch<OrdersHeadApiResponse>(
+      `/api/orders/head?${qs}`,
+      {
+        method: "GET",
+        headers: {
+          ...withAuthHeader(token),
+        },
+      }
+    );
+
+    return Array.isArray(res.data) ? res.data : [];
+  } catch (error) {
+    console.error("Error fetchOrdersHeadByUid:", error);
+    return [];
+  }
+}
