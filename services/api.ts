@@ -789,8 +789,6 @@ export async function createOrderRequest(
 }
 
 
-// --------- Orders: listar encabezados por uid (GET /api/orders/head) -----
-
 export type OrderHeadApi = {
   id_order: number;
   uid: string;
@@ -812,7 +810,6 @@ export type OrderHeadApi = {
   usuario_actualiza: string | null;
   fecha_creacion: string;
   fecha_actualizacion?: string | null;
-  // campos enriquecidos que devuelve tu getOrdersHeadAction:
   status: string | null;
   nombre_colonia: string | null;
   usuario: string | null;
@@ -827,7 +824,7 @@ type OrdersHeadApiResponse = {
 
 /**
  * Trae las órdenes (encabezados) de un usuario dado su uid.
- * Llama a GET /api/orders/head?uid=<uid>
+ * Llama a GET /api/orders?uid=<uid>
  */
 export async function fetchOrdersHeadByUid(
   uid: string,
@@ -842,7 +839,7 @@ export async function fetchOrdersHeadByUid(
     const qs = new URLSearchParams({ uid }).toString();
 
     const res = await apiFetch<OrdersHeadApiResponse>(
-      `/api/orders/head?${qs}`,
+      `/api/orders?${qs}`, // ✅ AQUÍ ESTABA EL BUG
       {
         method: "GET",
         headers: {
@@ -855,5 +852,78 @@ export async function fetchOrdersHeadByUid(
   } catch (error) {
     console.error("Error fetchOrdersHeadByUid:", error);
     return [];
+  }
+}
+
+// --------- Orders: detalle por id (GET /api/orders/:id) ----------------
+
+export type OrderDetailApi = {
+  id_det: number;
+  id_order: number;
+  id_producto: number;
+  qty: number;
+  precio: number;
+  id_bodega: number | null;
+  sub_total: number | null;
+  // campos enriquecidos
+  nombre_producto: string | null;
+  url_imagen: string | null;
+};
+
+export type OrderActivityApi = {
+  id_act: number;
+  id_order: number;
+  id_status: number | null;
+  fecha_actualizacion: string | null;
+  usuario_actualiza: string | null;
+  observacion: string | null;
+  // campo enriquecido
+  status: string | null;
+};
+
+export type OrderByIdApi = {
+  head: OrderHeadApi;
+  det: OrderDetailApi[];
+  activity: OrderActivityApi[];
+};
+
+type OrderByIdApiResponse = {
+  message: string;
+  reqId?: string;
+  data: OrderByIdApi | null;
+};
+
+/**
+ * Trae el detalle completo de una orden:
+ * head + det + activity.
+ * Llama a GET /api/orders/:id_order
+ */
+export async function fetchOrderById(
+  id_order: number,
+  token?: string
+): Promise<OrderByIdApi | null> {
+  if (!Number.isFinite(id_order) || id_order <= 0) {
+    console.warn("fetchOrderById: id_order inválido:", id_order);
+    throw new Error("Debe enviar un id_order válido.");
+  }
+
+  try {
+    const res = await apiFetch<OrderByIdApiResponse>(`/api/orden/${id_order}`, {
+      method: "GET",
+      headers: {
+        ...withAuthHeader(token),
+      },
+    });
+
+    return res.data ?? null;
+  } catch (error: any) {
+    // Si la API devuelve 404, normalizamos a null (orden no encontrada)
+    if (error?.status === 404) {
+      console.warn(`fetchOrderById: orden ${id_order} no encontrada`);
+      return null;
+    }
+
+    console.error("Error fetchOrderById:", error);
+    return null;
   }
 }
