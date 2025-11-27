@@ -773,6 +773,9 @@ export async function createOrderRequest(
   token?: string
 ): Promise<CreateOrderResp> {
   try {
+
+    console.log("payload:", payload);
+    
     const data = await apiFetch<CreateOrderOk>("/api/orders", {
       method: "POST",
       headers: { ...withAuthHeader(token) },

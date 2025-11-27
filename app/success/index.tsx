@@ -1,8 +1,7 @@
-// app/(app)/success/index.tsx
 import Button from "@/components/ui/Button";
 import Icono from "@/components/ui/Icon.native";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
   BackHandler,
@@ -19,40 +18,25 @@ function formatOrderCode(id: number, width = 5, prefix = "ORD-") {
 }
 
 export default function SuccessOrderScreen() {
-  const navigation = useNavigation();
+  const router = useRouter(); // 👈 SOLO esto, nada de useNavigation()
   const params = useLocalSearchParams<{ id_order?: string }>();
   const rawId = Number(params.id_order ?? 0);
-  const orderCode = formatOrderCode(rawId); // 👉 ORD-00005
+  const orderCode = formatOrderCode(rawId);
 
-  // 🔒 Evitar volver al checkout:
-  // - iOS: bloquea gesto "swipe back" (beforeRemove).
-  // - Android: intercepta botón físico "back".
   useFocusEffect(
     React.useCallback(() => {
-      // Ocultar flecha back y desactivar gesto
-      // (en Native Stack estas opciones están soportadas)
-      // @ts-ignore - depende del tipo del navigator
-      navigation.setOptions?.({
-        headerBackVisible: false,
-        gestureEnabled: false,
-      });
-
       const goHome = () => {
+        console.log("[SUCCESS] HW Back -> replace to home");
         router.replace("/(tabs)/home");
-        return true; // consumimos el back
+        return true;
       };
 
       const subHW = BackHandler.addEventListener("hardwareBackPress", goHome);
-      const subBeforeRemove = navigation.addListener("beforeRemove", (e) => {
-        e.preventDefault(); // evita que salga hacia atrás
-        router.replace("/(tabs)/home");
-      });
 
       return () => {
         subHW.remove();
-        subBeforeRemove();
       };
-    }, [navigation])
+    }, [router])
   );
 
   return (
@@ -80,13 +64,20 @@ export default function SuccessOrderScreen() {
             title="Regresar"
             iconName="Home"
             variant="gray"
-            onPress={() => router.replace("/(tabs)/home")}
+            onPress={() => {
+              console.log("[SUCCESS] Botón Regresar");
+              router.replace("/(tabs)/home");
+            }}
           />
+
           <Button
             title="Dar seguimiento"
             iconName="Truck"
             variant="primary"
-            onPress={() => router.replace("/orders")} // ajusta si tu ruta es distinta
+            onPress={() => {
+              console.log("[SUCCESS] Botón Seguimiento");
+              router.replace("/orders/id");
+            }}
           />
         </View>
 

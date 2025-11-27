@@ -41,6 +41,10 @@ type Addr = {
   nombre_direccion: string;
   referencia: string;
   isPrincipal?: boolean;
+
+  // ⬇ Campos nuevos
+  latitud?: number | null;
+  longitud?: number | null;
 };
 
 const toNumber = (v: any) => {
@@ -179,14 +183,19 @@ export default function CheckoutScreen() {
     }
   }, [totalsParam]);
 
-  // Direcciones por uid
   const fetchAddresses = async (hard = false) => {
     if (!user?.id) return;
     if (hard) setIsAddrLoading(true);
     try {
       const { data: session } = await supabase.auth.getSession();
       const token = session.session?.access_token;
+
       const rows: Direccion[] = await fetchDireccionesByUid(user.id, { token });
+
+      console.log(
+        "[CHECKOUT][FETCH_ADDR_ROWS]",
+        JSON.stringify(rows, null, 2)
+      );
 
       const mapped: Addr[] = rows.map((r) => ({
         id: r.id_direccion,
@@ -194,7 +203,15 @@ export default function CheckoutScreen() {
         nombre_direccion: r.nombre_direccion ?? "Sin nombre",
         referencia: r.referencia ?? "",
         isPrincipal: !!r.isPrincipal,
+        // 👇 aquí revisa si tu API realmente manda latitude/longitude o latitud/longitud
+        latitud: (r as any).latitude ?? (r as any).latitud ?? null,
+        longitud: (r as any).longitude ?? (r as any).longitud ?? null,
       }));
+
+      console.log(
+        "[CHECKOUT][FETCH_ADDR_MAPPED]",
+        JSON.stringify(mapped, null, 2)
+      );
 
       setAddresses(mapped);
 
@@ -202,6 +219,10 @@ export default function CheckoutScreen() {
       if (firstLoadRef.current) {
         const principal = mapped.find((m) => m.isPrincipal);
         setSelectedAddressId(principal?.id ?? (mapped[0]?.id ?? null));
+        console.log("[CHECKOUT][AUTO_SELECTED_ADDR]", {
+          principalId: principal?.id,
+          fallbackId: mapped[0]?.id ?? null,
+        });
         firstLoadRef.current = false;
       }
     } catch (e: any) {
@@ -210,7 +231,6 @@ export default function CheckoutScreen() {
       setIsAddrLoading(false);
     }
   };
-
   useEffect(() => {
     if (user?.id) fetchAddresses(true);
   }, [user?.id]);
@@ -285,12 +305,14 @@ export default function CheckoutScreen() {
       },
       address: addressObj
         ? {
-            id: addressObj.id,
-            tipo_direccion: addressObj.tipo_direccion,
-            nombre_direccion: addressObj.nombre_direccion,
-            referencia: addressObj.referencia,
-            isPrincipal: !!addressObj.isPrincipal,
-          }
+          id: addressObj.id,
+          tipo_direccion: addressObj.tipo_direccion,
+          nombre_direccion: addressObj.nombre_direccion,
+          referencia: addressObj.referencia,
+          isPrincipal: !!addressObj.isPrincipal,
+          latitud: addressObj.latitud ?? null,
+          longitud: addressObj.longitud ?? null,
+        }
         : null,
       payment: {
         selectedMethodId,
@@ -298,12 +320,12 @@ export default function CheckoutScreen() {
         isCard,
         cardForm: isCard
           ? {
-              holder: cardForm.holder,
-              numberMasked: cardForm.number.replace(/\d(?=\d{4})/g, "•"),
-              expiry: cardForm.expiry,
-              cvvMasked: cardForm.cvv ? "•••" : "",
-              valid: cardFormValid,
-            }
+            holder: cardForm.holder,
+            numberMasked: cardForm.number.replace(/\d(?=\d{4})/g, "•"),
+            expiry: cardForm.expiry,
+            cvvMasked: cardForm.cvv ? "•••" : "",
+            valid: cardFormValid,
+          }
           : null,
       },
       rules: {
@@ -329,6 +351,9 @@ export default function CheckoutScreen() {
       selectedMethodId != null ? `pm_id=${selectedMethodId}` : null,
     ].filter(Boolean).join(" | ");
 
+    const addressObj =
+      selectedAddressId != null ? addresses.find(a => a.id === selectedAddressId) ?? null : null;
+
     return {
       id_status: 1, // creada (ajusta si usas otro estado inicial)
       uid: user?.id ?? undefined,                // tbl_orders_head.uid es NOT NULL
@@ -341,6 +366,17 @@ export default function CheckoutScreen() {
       delivery: Number(summary.shipping ?? 0),
       isv: Number(summary.taxes ?? 0),
       ajuste: 0,
+
+      // Info de dirección (incluyendo coordenadas)
+      direccion: addressObj
+        ? {
+          id_direccion: addressObj.id,
+          nombre_direccion: addressObj.nombre_direccion,
+          referencia: addressObj.referencia,
+          latitud: addressObj.latitud ?? null,
+          longitud: addressObj.longitud ?? null,
+        }
+        : null,
 
       // Items del carrito
       items: items.map((it) => ({
@@ -439,7 +475,11 @@ export default function CheckoutScreen() {
         <AddressSelector
           addresses={addresses}
           selectedId={selectedAddressId}
-          onSelect={setSelectedAddressId}
+          onSelect={(id) => {
+            setSelectedAddressId(id);
+            const addr = addresses.find(a => a.id === id) ?? null;
+            console.log("[CHECKOUT][ADDR_SELECTED]", { id, addr });
+          }}
           isLoading={isAddrLoading}
           onAdd={() =>
             router.push({
@@ -472,8 +512,8 @@ export default function CheckoutScreen() {
         onPress={handlePlaceOrder}
         disabled={isPlacing}   // ⬅️ BLOQUEA mientras esperamos la API
         loading={isPlacing}    // ⬅️ Muestra spinner si tu botón lo soporta
-        // fallback visual si tu botón no soporta loading:
-        // style={[isPlacing && { opacity: 0.6 }]}
+      // fallback visual si tu botón no soporta loading:
+      // style={[isPlacing && { opacity: 0.6 }]}
       />
 
       <ConfirmModal
@@ -503,11 +543,11 @@ export default function CheckoutScreen() {
 // Sombras y elevación con fallbacks seguros
 const iosShadow = Platform.OS === "ios"
   ? {
-      shadowColor: "#000",
-      shadowOpacity: 0.08,
-      shadowOffset: { width: 0, height: 2 },
-      shadowRadius: 6,
-    }
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+  }
   : {};
 
 const androidElevation = Platform.OS === "android" ? { elevation: 0 } : {};
