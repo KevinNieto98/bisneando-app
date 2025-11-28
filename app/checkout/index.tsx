@@ -15,7 +15,10 @@ import {
   Platform,
   ScrollView,
   StatusBar,
-  StyleSheet
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -45,6 +48,7 @@ type Addr = {
   // ⬇ Campos nuevos
   latitud?: number | null;
   longitud?: number | null;
+  id_colonia?: number | null; // 👈 importante para la orden
 };
 
 const toNumber = (v: any) => {
@@ -89,6 +93,9 @@ export default function CheckoutScreen() {
   // Modal de alertas (reasons)
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [modalMessage, setModalMessage] = useState("");
+
+  // 📝 Instrucciones de entrega (opcional)
+  const [deliveryInstructions, setDeliveryInstructions] = useState("");
 
   const openReason = (msg: string) => {
     setModalMessage(msg);
@@ -203,9 +210,9 @@ export default function CheckoutScreen() {
         nombre_direccion: r.nombre_direccion ?? "Sin nombre",
         referencia: r.referencia ?? "",
         isPrincipal: !!r.isPrincipal,
-        // 👇 aquí revisa si tu API realmente manda latitude/longitude o latitud/longitud
         latitud: (r as any).latitude ?? (r as any).latitud ?? null,
         longitud: (r as any).longitude ?? (r as any).longitud ?? null,
+        id_colonia: (r as any).id_colonia ?? null, // 👈 importante
       }));
 
       console.log(
@@ -231,6 +238,7 @@ export default function CheckoutScreen() {
       setIsAddrLoading(false);
     }
   };
+
   useEffect(() => {
     if (user?.id) fetchAddresses(true);
   }, [user?.id]);
@@ -312,6 +320,7 @@ export default function CheckoutScreen() {
           isPrincipal: !!addressObj.isPrincipal,
           latitud: addressObj.latitud ?? null,
           longitud: addressObj.longitud ?? null,
+          id_colonia: addressObj.id_colonia ?? null, // 👈 log de colonia
         }
         : null,
       payment: {
@@ -341,6 +350,7 @@ export default function CheckoutScreen() {
         isAddrLoading,
         isPmLoading,
       },
+      deliveryInstructions: deliveryInstructions.trim() || null,
     };
   };
 
@@ -354,20 +364,29 @@ export default function CheckoutScreen() {
     const addressObj =
       selectedAddressId != null ? addresses.find(a => a.id === selectedAddressId) ?? null : null;
 
-    return {
+    const instructions = deliveryInstructions.trim();
+
+    const payload = {
       id_status: 1, // creada (ajusta si usas otro estado inicial)
       uid: user?.id ?? undefined,                // tbl_orders_head.uid es NOT NULL
       usuario_actualiza: (user as any)?.email ?? user?.id ?? null,
       tipo_dispositivo: Platform.OS,             // "ios" | "android"
-      observacion: null,
+
+      // Usamos observacion para guardar las instrucciones por ahora
+      observacion: instructions || null,
       actividad_observacion: actividadObs || null,
+      // Campo extra por si luego lo quieres mapear directo en la API/DB
+      instrucciones_entrega: instructions || null,
+
+      // 🔹 id_metodo se manda directo al body
+      id_metodo: selectedMethodId ?? null,
 
       // Totales del resumen
       delivery: Number(summary.shipping ?? 0),
       isv: Number(summary.taxes ?? 0),
       ajuste: 0,
 
-      // Info de dirección (incluyendo coordenadas)
+      // Info de dirección (incluyendo coordenadas + id_colonia)
       direccion: addressObj
         ? {
           id_direccion: addressObj.id,
@@ -375,6 +394,7 @@ export default function CheckoutScreen() {
           referencia: addressObj.referencia,
           latitud: addressObj.latitud ?? null,
           longitud: addressObj.longitud ?? null,
+          id_colonia: addressObj.id_colonia ?? null, // 👈 AQUÍ se manda id_colonia
         }
         : null,
 
@@ -383,9 +403,11 @@ export default function CheckoutScreen() {
         id_producto: Number(it.id),
         qty: Number(it.quantity),
         precio: Number(it.price),
-        // id_bodega: ... // pásalo si lo tienes
       })),
     } as const;
+
+    console.log("[CHECKOUT][ORDER_PAYLOAD]", JSON.stringify(payload, null, 2));
+    return payload;
   };
 
   // ======== Enviar orden ========
@@ -501,8 +523,23 @@ export default function CheckoutScreen() {
           onLoadingChange={setIsPmLoading}
         />
 
-        {/* No mostramos reasons en la UI; solo AlertModal cuando intenta colocar orden */}
+        {/* Sección "Verificar orden" */}
         <CartSection />
+
+        {/* 📝 Sección "Instrucciones de entrega" con mismo look & feel */}
+        <View style={styles.instructionsSection}>
+          <Text style={styles.instructionsTitle}>Instrucciones de entrega</Text>
+          <TextInput
+            style={styles.instructionsInput}
+            placeholder="Opcional: agrega detalles para el repartidor (punto de referencia, edificio, instrucciones especiales, etc.)."
+            placeholderTextColor="#9ca3af"
+            value={deliveryInstructions}
+            onChangeText={setDeliveryInstructions}
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+          />
+        </View>
       </ScrollView>
 
       <OrderSummary summary={summary} />
@@ -510,10 +547,8 @@ export default function CheckoutScreen() {
       <PlaceOrderButton
         variant="warning"
         onPress={handlePlaceOrder}
-        disabled={isPlacing}   // ⬅️ BLOQUEA mientras esperamos la API
-        loading={isPlacing}    // ⬅️ Muestra spinner si tu botón lo soporta
-      // fallback visual si tu botón no soporta loading:
-      // style={[isPlacing && { opacity: 0.6 }]}
+        disabled={isPlacing}
+        loading={isPlacing}
       />
 
       <ConfirmModal
@@ -570,4 +605,30 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   loadingText: { fontSize: 16, color: "#52525b" },
+
+  // 📦 Caja de instrucciones con el mismo layout base que CartSection.section
+  instructionsSection: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    marginHorizontal: 8,
+    padding: 16,
+    marginBottom: 16,
+  },
+  instructionsTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 8,
+    color: "#111827",
+  },
+  instructionsInput: {
+    minHeight: 80,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    textAlignVertical: "top",
+    backgroundColor: "#f9fafb",
+  },
 });

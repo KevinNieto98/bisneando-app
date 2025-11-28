@@ -1,10 +1,11 @@
 import { fetchOrderById } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
-import { useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   Image,
   ScrollView,
   StatusBar,
@@ -73,10 +74,16 @@ function formatDateTime(iso?: string | null) {
 }
 
 export default function OrderDetailScreen() {
-  const navigation = useNavigation();
-  const { id } = useLocalSearchParams();
+  const router = useRouter();
+
+  const { id, fromSuccess } = useLocalSearchParams<{
+    id?: string;
+    fromSuccess?: string;
+  }>();
 
   const numericId = Number(id);
+  const cameFromSuccess = fromSuccess === "1";
+
   const [order, setOrder] = useState<FullOrderByIdApi | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -94,8 +101,8 @@ export default function OrderDetailScreen() {
         setLoadError(null);
 
         const data = await fetchOrderById(numericId);
-        console.log('data',data);
-        
+        console.log("[ORDER_DETAIL] data", data);
+
         if (!data) {
           setLoadError("No se encontró información para esta orden.");
           setOrder(null);
@@ -125,6 +132,37 @@ export default function OrderDetailScreen() {
   const lastActivity = order?.activity?.[0] ?? null;
   const lastObservation = lastActivity?.observacion ?? null;
 
+  // 👇 Manejar back según de dónde vino (SOLO se usa en back del header y HW back)
+  const handleBack = useCallback(() => {
+    console.log("[ORDER_DETAIL] handleBack, cameFromSuccess:", cameFromSuccess);
+
+    if (cameFromSuccess) {
+      router.replace("/(tabs)/home");
+    } else {
+      // viene de orders (lista) → back normal
+      router.back();
+    }
+
+    return true;
+  }, [cameFromSuccess, router]);
+
+  // 🔒 Interceptar botón físico / gesto back de Android SOLO si viene de success
+  useFocusEffect(
+    useCallback(() => {
+      if (!cameFromSuccess) {
+        return undefined;
+      }
+
+      const subHW = BackHandler.addEventListener("hardwareBackPress", () => {
+        return handleBack();
+      });
+
+      return () => {
+        subHW.remove();
+      };
+    }, [cameFromSuccess, handleBack])
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
@@ -133,7 +171,7 @@ export default function OrderDetailScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          onPress={handleBack}
           activeOpacity={0.7}
         >
           <Ionicons name="arrow-back" size={24} color="#000" />
@@ -165,6 +203,27 @@ export default function OrderDetailScreen() {
         ) : (
           // ✅ Detalle
           <ScrollView contentContainerStyle={styles.scrollContent}>
+            {/* Banner especial si viene desde Success */}
+            {cameFromSuccess && (
+              <View style={styles.successBanner}>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={18}
+                  color="#166534"
+                  style={{ marginRight: 6 }}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.successBannerTitle}>
+                    ¡Gracias por tu compra! 🎉
+                  </Text>
+                  <Text style={styles.successBannerText}>
+                    Aquí puedes dar seguimiento al estado de tu pedido en tiempo
+                    real. Te avisaremos cuando avance a las siguientes etapas.
+                  </Text>
+                </View>
+              </View>
+            )}
+
             {/* =========================
                 Barra de estado / “progress”
                ========================= */}
@@ -285,7 +344,6 @@ export default function OrderDetailScreen() {
                 ))
               )}
             </View>
-
           </ScrollView>
         )}
       </View>
@@ -343,6 +401,28 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 24,
+  },
+
+  // 🔔 Banner especial cuando viene del success
+  successBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#FEF9C3",
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#FACC15",
+  },
+  successBannerTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#854D0E",
+    marginBottom: 2,
+  },
+  successBannerText: {
+    fontSize: 13,
+    color: "#854D0E",
   },
 
   // Banner de estado rechazado

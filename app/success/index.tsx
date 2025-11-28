@@ -76,7 +76,13 @@ export default function SuccessOrderScreen() {
             variant="primary"
             onPress={() => {
               console.log("[SUCCESS] Botón Seguimiento");
-              router.replace("/orders/id");
+              router.replace({
+                pathname: "/orders/[id]",
+                params: { id: String(rawId),
+                  fromSuccess: "1"
+                 },
+                  
+              });
             }}
           />
         </View>
