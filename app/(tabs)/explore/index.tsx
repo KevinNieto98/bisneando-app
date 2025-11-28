@@ -1,11 +1,12 @@
 import { ExploreSkeleton } from "@/components";
 import { CategoriesContainer } from "@/components/CategoriesContainer";
 import { ProductGrid } from "@/components/ProductGrid";
+import type { Product } from "@/components/ProductSlideItem";
 import { Search } from "@/components/ui/Search";
 import { useAppStore } from "@/store/useAppStore";
 import { useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { Platform, StatusBar, StyleSheet, View } from "react-native";
+import { Platform, StatusBar, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Selected = number | "all";
@@ -30,10 +31,12 @@ export default function ExploreScreen() {
     loadProducts,
   } = useAppStore();
 
-  // 🚩 lee el parámetro ?categoryId=123
   const { categoryId } = useLocalSearchParams<{ categoryId?: string }>();
 
   const [selectedCat, setSelectedCat] = useState<Selected>("all");
+
+  // 🔎 resultados aplicados al grid después de darle Enter / Search
+  const [searchResults, setSearchResults] = useState<Product[] | null>(null);
 
   // Cargar data
   useEffect(() => {
@@ -51,6 +54,11 @@ export default function ExploreScreen() {
     }
   }, [categoryId]);
 
+  // Si cambio la categoría, reseteo la búsqueda aplicada
+  useEffect(() => {
+    setSearchResults(null);
+  }, [selectedCat]);
+
   const loading = loadingCategories || loadingProducts;
 
   // Filtra productos según la categoría seleccionada
@@ -59,10 +67,39 @@ export default function ExploreScreen() {
     return products.filter((p) => getProductCategoryId(p) === selectedCat);
   }, [products, selectedCat]);
 
+  // Productos que se muestran en el grid
+  const gridProducts = useMemo(() => {
+    if (searchResults && searchResults.length > 0) return searchResults;
+    if (searchResults && searchResults.length === 0) return []; // búsqueda sin matches pero aplicada
+    return filteredProducts;
+  }, [filteredProducts, searchResults]);
+
+  const hasActiveSearch = searchResults !== null;
+  const noMatches = hasActiveSearch && searchResults?.length === 0;
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
-      <Search products={filteredProducts} onSelect={() => {}} />
+
+      {/* 🔍 Busca SOLO dentro de filteredProducts (categoría seleccionada) */}
+      <Search
+        products={filteredProducts}
+        onSelect={() => {}}
+        onSubmitSearch={({
+          query,
+          results,
+        }: {
+          query: string;
+          results: Product[];
+        }) => {
+          if (!query || query.trim().length < 3) {
+            setSearchResults(null); // sin búsqueda aplicada
+          } else {
+            // results ya viene filtrado por categoría porque Search recibe filteredProducts
+            setSearchResults(results);
+          }
+        }}
+      />
 
       <View
         style={[
@@ -76,10 +113,19 @@ export default function ExploreScreen() {
           <>
             <CategoriesContainer
               categories={categories}
-              selectedId={selectedCat}       // ✅ marca la píldora seleccionada
+              selectedId={selectedCat}
               onSelect={(id) => setSelectedCat(id)}
             />
-            <ProductGrid products={filteredProducts} />
+
+            {noMatches ? (
+              <View style={styles.noMatchesBox}>
+                <Text style={styles.noMatchesText}>
+                  No se encontraron coincidencias en esta categoría
+                </Text>
+              </View>
+            ) : (
+              <ProductGrid products={gridProducts} />
+            )}
           </>
         )}
       </View>
@@ -98,5 +144,23 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 16,
+    marginTop: -8, // reduce el espacio entre el buscador y las categorías
+  },
+  noMatchesBox: {
+    marginTop: 32,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  noMatchesText: {
+    fontSize: 15,
+    color: "#4b5563",
+    textAlign: "center",
+    fontWeight: "500",
   },
 });

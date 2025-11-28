@@ -2,7 +2,8 @@ import { validateCart } from "@/services/api";
 import type { CartItem as CartItemType } from "@/store/useCartStore";
 import { useCartStore } from "@/store/useCartStore";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+// ❌ ya no usamos useNavigation
+// import { useNavigation } from "@react-navigation/native";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -32,6 +33,8 @@ type Props = {
     message: string;
     issues: ValidationIssue[];
   }) => void;
+  // 👇 NUEVO: callback para "Seguir comprando"
+  onKeepShopping: () => void;
 };
 
 export const CartSummary: React.FC<Props> = ({
@@ -42,8 +45,9 @@ export const CartSummary: React.FC<Props> = ({
   toHNL,
   items,
   onValidationFail,
+  onKeepShopping,
 }) => {
-  const navigation = useNavigation();
+  // const navigation = useNavigation(); // ❌ eliminado
   const [loading, setLoading] = useState(false);
 
   // Nueva acción del store para aplicar precios del servidor
@@ -221,7 +225,8 @@ export const CartSummary: React.FC<Props> = ({
           isKeepDisabled && styles.keepBtnDisabled,
           pressed && !isKeepDisabled && { opacity: 0.9 },
         ]}
-        onPress={() => navigation.navigate("Products" as never)}
+        // 👇 usamos el callback que viene de props
+        onPress={onKeepShopping}
         disabled={isKeepDisabled}
         android_ripple={
           !isKeepDisabled ? { color: "rgba(0,0,0,0.06)" } : undefined

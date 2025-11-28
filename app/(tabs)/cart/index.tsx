@@ -53,7 +53,9 @@ export default function CartScreen() {
   const products = useAppStore((s) => s.products);
 
   const [bannerMsg, setBannerMsg] = useState<string | undefined>(undefined);
-  const [problemsById, setProblemsById] = useState<Map<number, ProblemInfo>>(new Map());
+  const [problemsById, setProblemsById] = useState<Map<number, ProblemInfo>>(
+    new Map()
+  );
 
   useEffect(() => {
     if (!bannerMsg) return;
@@ -111,7 +113,13 @@ export default function CartScreen() {
   // Recibe del CartSummary: mensaje + issues (con availableQty)
   const handleValidationFail = (payload: {
     message: string;
-    issues: { id: number; status: ProblemInfo["status"]; availableQty?: number; dbPrice?: number; nombre_producto?: string }[];
+    issues: {
+      id: number;
+      status: ProblemInfo["status"];
+      availableQty?: number;
+      dbPrice?: number;
+      nombre_producto?: string;
+    }[];
   }) => {
     setBannerMsg(payload.message);
     const next = new Map<number, ProblemInfo>();
@@ -142,11 +150,10 @@ export default function CartScreen() {
         <Text style={styles.headerTitle}>Carrito</Text>
       </View>
 
-
       {/* Contenido */}
       <View style={styles.content}>
-              {/* Banner (absoluto) */}
-      <SuccessBanner message={bannerMsg} variant="error" />
+        {/* Banner (absoluto) */}
+        <SuccessBanner message={bannerMsg} variant="error" />
 
         <View style={styles.listContainer}>
           {isEmpty ? (
@@ -192,6 +199,10 @@ export default function CartScreen() {
               toHNL={toHNL}
               items={items}
               onValidationFail={handleValidationFail}
+              // 👇 NUEVO: qué hace "Seguir comprando"
+              onKeepShopping={() => router.push("/")}
+              // si prefieres ir a otra pantalla:
+              // onKeepShopping={() => router.push("/explore")}
             />
           </View>
         )}
