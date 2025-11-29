@@ -129,7 +129,8 @@ const DROPDOWN_TOP = 72; // altura donde empieza el dropdown
 
 const styles = StyleSheet.create({
   container: {
-    position: "relative", // base para los absolutes
+    position: "relative", 
+    paddingBottom: 12,
   },
 
   header: {

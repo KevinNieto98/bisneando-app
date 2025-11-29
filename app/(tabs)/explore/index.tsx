@@ -5,13 +5,20 @@ import type { Product } from "@/components/ProductSlideItem";
 import { Search } from "@/components/ui/Search";
 import { useAppStore } from "@/store/useAppStore";
 import { useLocalSearchParams } from "expo-router";
+import { Trash2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
-import { Platform, StatusBar, StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Selected = number | "all";
 
-// Helper (por si tu producto cambia de nombre de campo)
 const getProductCategoryId = (p: any): number | undefined => {
   if (!p || typeof p !== "object") return undefined;
   return (
@@ -34,9 +41,8 @@ export default function ExploreScreen() {
   const { categoryId } = useLocalSearchParams<{ categoryId?: string }>();
 
   const [selectedCat, setSelectedCat] = useState<Selected>("all");
-
-  // 🔎 resultados aplicados al grid después de darle Enter / Search
   const [searchResults, setSearchResults] = useState<Product[] | null>(null);
+  const [searchResetKey, setSearchResetKey] = useState(0); // 👈 para limpiar el Search
 
   // Cargar data
   useEffect(() => {
@@ -44,7 +50,7 @@ export default function ExploreScreen() {
     loadProducts();
   }, []);
 
-  // Inicializa selección desde el parámetro de la ruta
+  // Inicializar categoría desde la ruta
   useEffect(() => {
     if (categoryId != null && categoryId !== "") {
       const idNum = Number(categoryId);
@@ -54,14 +60,14 @@ export default function ExploreScreen() {
     }
   }, [categoryId]);
 
-  // Si cambio la categoría, reseteo la búsqueda aplicada
+  // Si cambio categoría, limpio resultados de búsqueda aplicados
   useEffect(() => {
     setSearchResults(null);
   }, [selectedCat]);
 
   const loading = loadingCategories || loadingProducts;
 
-  // Filtra productos según la categoría seleccionada
+  // Filtrar por categoría
   const filteredProducts = useMemo(() => {
     if (selectedCat === "all") return products;
     return products.filter((p) => getProductCategoryId(p) === selectedCat);
@@ -70,32 +76,48 @@ export default function ExploreScreen() {
   // Productos que se muestran en el grid
   const gridProducts = useMemo(() => {
     if (searchResults && searchResults.length > 0) return searchResults;
-    if (searchResults && searchResults.length === 0) return []; // búsqueda sin matches pero aplicada
+    if (searchResults && searchResults.length === 0) return [];
     return filteredProducts;
   }, [filteredProducts, searchResults]);
 
   const hasActiveSearch = searchResults !== null;
   const noMatches = hasActiveSearch && searchResults?.length === 0;
 
+  const selectedCategoryName =
+    selectedCat !== "all"
+      ? categories.find((c) => c.id_categoria === selectedCat)
+          ?.nombre_categoria ?? "Categoría"
+      : null;
+
+  // 🔹 Cuando el usuario selecciona un producto del buscador
+  const handleSelectProduct = (product: Product | null) => {
+    if (!product) {
+      setSearchResults(null);
+      return;
+    }
+    setSearchResults([product]); // Muestra solo ese producto en el grid
+  };
+
+  // 🔹 Limpiar filtros + limpiar buscador
+  const handleClearFilters = () => {
+    setSelectedCat("all");
+    setSearchResults(null);
+    setSearchResetKey((prev) => prev + 1); // fuerza remount del <Search />
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
 
-      {/* 🔍 Busca SOLO dentro de filteredProducts (categoría seleccionada) */}
+      {/* key para poder resetear el input del Search */}
       <Search
+        key={searchResetKey}
         products={filteredProducts}
-        onSelect={() => {}}
-        onSubmitSearch={({
-          query,
-          results,
-        }: {
-          query: string;
-          results: Product[];
-        }) => {
+        onSelect={handleSelectProduct}
+        onSubmitSearch={({ query, results }) => {
           if (!query || query.trim().length < 3) {
-            setSearchResults(null); // sin búsqueda aplicada
+            setSearchResults(null);
           } else {
-            // results ya viene filtrado por categoría porque Search recibe filteredProducts
             setSearchResults(results);
           }
         }}
@@ -111,6 +133,24 @@ export default function ExploreScreen() {
           <ExploreSkeleton />
         ) : (
           <>
+            {/* 🎨 Banner moderno y elegante */}
+            {selectedCat !== "all" && (
+              <View style={styles.filterPill}>
+                <Text style={styles.filterPillText}>
+                  Filtrando por:{" "}
+                  <Text style={styles.bold}>{selectedCategoryName}</Text>
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.clearButton}
+                  onPress={handleClearFilters}
+                >
+                  <Trash2 size={18} color="#EF4444" strokeWidth={2} />
+                  <Text style={styles.clearButtonText}>Quitar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <CategoriesContainer
               categories={categories}
               selectedId={selectedCat}
@@ -122,6 +162,12 @@ export default function ExploreScreen() {
                 <Text style={styles.noMatchesText}>
                   No se encontraron coincidencias en esta categoría
                 </Text>
+
+                <TouchableOpacity onPress={handleClearFilters}>
+                  <Text style={styles.removeFilterText}>
+                    Buscar en todas las categorías
+                  </Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <ProductGrid products={gridProducts} />
@@ -144,8 +190,49 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 16,
-    marginTop: -8, // reduce el espacio entre el buscador y las categorías
+    marginTop: -8,
   },
+
+  /* 🎨 Nuevo banner tipo "pill" elegante */
+  filterPill: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#FFF8C8",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 50,
+    marginBottom: 14,
+    shadowColor: "#000",
+    shadowOpacity: 0.07,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  filterPillText: {
+    color: "#4b5563",
+    fontSize: 14,
+  },
+  bold: {
+    fontWeight: "700",
+  },
+
+  clearButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    backgroundColor: "#ffe2e2",
+  },
+  clearButtonText: {
+    color: "#EF4444",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+
+  /* Sin coincidencias */
   noMatchesBox: {
     marginTop: 32,
     paddingVertical: 16,
@@ -162,5 +249,12 @@ const styles = StyleSheet.create({
     color: "#4b5563",
     textAlign: "center",
     fontWeight: "500",
+    marginBottom: 8,
+  },
+  removeFilterText: {
+    marginTop: 10,
+    color: "#2563eb",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });
