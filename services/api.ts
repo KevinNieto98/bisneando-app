@@ -10,11 +10,26 @@ type ApiOptions = {
   timeoutMs?: number;
 };
 
+// 👇 Helper para loguear errores de forma más limpia (sin warnings/errores en consola)
+function logApiError(scope: string, error: any) {
+  // Si en algún momento quieres loguear en desarrollo:
+  // if (__DEV__) {
+  //   console.log(`[${scope}]`, error?.message ?? error);
+  // }
+}
+
+// Helper para devolver un valor vacío genérico y no romper tipos
+function emptyResult<T>(): T {
+  return {} as T;
+}
+
 async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<T> {
   const { method = "GET", body, headers, timeoutMs = 12000 } = opts;
 
   if (!API_BASE) {
-    throw new Error("API base URL no definida. Configura EXPO_PUBLIC_API_URL.");
+    // Sin base URL, devolvemos vacío y logueamos suave
+    logApiError("apiFetch", new Error("API base URL no definida. Configura EXPO_PUBLIC_API_URL."));
+    return emptyResult<T>();
   }
 
   const controller = new AbortController();
@@ -41,30 +56,58 @@ async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<T> {
       /* raw no era JSON */
     }
 
+    // Si la respuesta NO es ok, no lanzamos error, solo devolvemos lo que haya
     if (!res.ok) {
       const msg =
         (data && (data.message || data.error)) ||
-        raw || // muestra el texto del error si no hay JSON
+        raw ||
         `HTTP ${res.status} ${res.statusText}`;
 
-      const err = new Error(
-        `[API ERROR] ${method} ${url} -> ${res.status} ${res.statusText}\n` +
-          `Respuesta: ${msg}`
-      ) as any;
-      err.status = res.status;
-      err.statusText = res.statusText;
-      err.url = url;
-      err.method = method;
-      err.body = data ?? raw;
-      throw err;
+      logApiError(
+        "apiFetch",
+        new Error(
+          `[API ERROR] ${method} ${url} -> ${res.status} ${res.statusText}\nRespuesta: ${msg}`
+        )
+      );
+
+      // devolvemos data si existe, si no, algo vacío
+      return (data ?? emptyResult<T>()) as T;
     }
 
-    return (data ?? ({} as any)) as T;
-  } catch (err) {
-    if ((err as any)?.name === "AbortError") {
-      throw new Error("Tiempo de espera agotado al contactar la API.");
+    return (data ?? emptyResult<T>()) as T;
+  } catch (err: any) {
+    // ⏱ Timeout (AbortController)
+    if (err?.name === "AbortError") {
+      const timeoutError = new Error(
+        "No pudimos conectar con el servidor. Revisa tu conexión a internet e inténtalo de nuevo."
+      ) as any;
+      timeoutError.status = 404;
+      timeoutError.code = "TIMEOUT_ERROR";
+      timeoutError.isNetworkError = true;
+      logApiError("apiFetch-timeout", timeoutError);
+      return emptyResult<T>();
     }
-    throw err;
+
+    // 🌐 Errores típicos de red / sin conexión en React Native / fetch
+    const msg = String(err?.message ?? "");
+    if (
+      msg.includes("Network request failed") ||
+      msg.includes("Failed to fetch") ||
+      msg.includes("NetworkError")
+    ) {
+      const netError = new Error(
+        "Parece que no hay conexión a internet. Verifica tu red e inténtalo nuevamente."
+      ) as any;
+      netError.status = 404;
+      netError.code = "NETWORK_ERROR";
+      netError.isNetworkError = true;
+      logApiError("apiFetch-network", netError);
+      return emptyResult<T>();
+    }
+
+    // cualquier otro error: solo lo registramos suave y devolvemos vacío
+    logApiError("apiFetch-unknown", err);
+    return emptyResult<T>();
   } finally {
     clearTimeout(id);
   }
@@ -73,18 +116,19 @@ async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<T> {
 // --------- Endpoints concretos -----------------------------------------
 export async function fetchCategorias() {
   try {
-    return await apiFetch<any[]>("/api/categorias");
-  } catch (error) {
-    console.error("Error fetchCategorias:", error);
+    const res = await apiFetch<any[]>("/api/categorias");
+    return Array.isArray(res) ? res : [];
+  } catch {
+    // Nunca deberíamos entrar aquí porque apiFetch ya no lanza, pero por si acaso
     return [];
   }
 }
 
 export async function fetchActivePortadas() {
   try {
-    return await apiFetch<any[]>("/api/portadas");
-  } catch (error) {
-    console.error("Error fetchActivePortadas:", error);
+    const res = await apiFetch<any[]>("/api/portadas");
+    return Array.isArray(res) ? res : [];
+  } catch {
     return [];
   }
 }
@@ -97,18 +141,18 @@ export async function fetchProductosDestacados() {
       orderDir: "desc",
       limit: "10",
     });
-    return await apiFetch<any[]>(`/api/productos/?${params.toString()}`);
-  } catch (error) {
-    console.error("Error fetchProductosDestacados:", error);
+    const res = await apiFetch<any[]>(`/api/productos/?${params.toString()}`);
+    return Array.isArray(res) ? res : [];
+  } catch {
     return [];
   }
 }
 
 export async function fetchProductoById(id: number) {
   try {
-    return await apiFetch<any>(`/api/productos/${id}`);
-  } catch (error) {
-    console.error("fetchProductoById:", error);
+    const res = await apiFetch<any>(`/api/productos/${id}`);
+    return res ?? null;
+  } catch {
     return null;
   }
 }
@@ -138,20 +182,27 @@ export type SignupResult =
   | { ok: false; message: string };
 
 // --------- NUEVO: Signup -----------------------------------------------
-export async function signupRequest(payload: SignupPayload): Promise<SignupResult> {
+export async function signupRequest(
+  payload: SignupPayload
+): Promise<SignupResult> {
   try {
     const res = await apiFetch<SignupResult>("/api/signup", {
       method: "POST",
       body: payload,
     });
 
-    // Normalizar por si el backend cambia pequeñas cosas
-    if (res.ok === true && (res.status === "created" || res.status === "pending_confirmation")) {
+    if (
+      res.ok === true &&
+      (res.status === "created" || res.status === "pending_confirmation")
+    ) {
       return res;
     }
     return { ok: false, message: "Respuesta inesperada del servidor." };
   } catch (error: any) {
-    return { ok: false, message: error?.message ?? "No se pudo crear la cuenta." };
+    return {
+      ok: false,
+      message: error?.message ?? "No se pudo crear la cuenta.",
+    };
   }
 }
 
@@ -177,7 +228,7 @@ export async function loginRequestApp(
   try {
     const res = await apiFetch<LoginResponse>("/api/login", {
       method: "POST",
-      body: { email, password, platform: "APP" }, // forzado APP
+      body: { email, password, platform: "APP" },
     });
     return res;
   } catch (error: any) {
@@ -194,38 +245,30 @@ function withAuthHeader(token?: string): Record<string, string> {
 }
 
 // --------- OTP: Generar -----------------------------------------------
-// Tipos de respuesta del generate
 export type OtpGenerateOk = {
   ok: true;
   id_event: string;
   expires_at: string;
-  otp?: string; // solo en dev si returnOtpInResponse=true
+  otp?: string;
 };
 
 export type OtpGenerateErr = {
   ok: false;
-  error?: string;   // tu backend usa "error"
-  message?: string; // compat
+  error?: string;
+  message?: string;
 };
 
 export type OtpGenerateResp = OtpGenerateOk | OtpGenerateErr;
 
-/** Generar OTP para una acción dada (p.ej. "verify_account") */
 export async function otpGenerate(
   id_accion: string,
   options?: {
-    /** dirección de correo a la que se enviará el OTP (si aplica) */
-    email?: string; // opcional para evitar romper llamadas antiguas
-    /** canal de envío del OTP */
+    email?: string;
     channel?: "email" | "sms";
-    /** tiempo de vida en segundos */
     ttlSeconds?: number;
     metadata?: Record<string, any>;
-    /** solo para DEV: si true, el backend puede devolver el OTP en la respuesta si no es production */
     returnOtpInResponse?: boolean;
-    /** access token del usuario (Supabase) */
     token?: string;
-    /** NUEVO: forzar regeneración si ya existe un OTP activo */
     replaceActive?: boolean;
   }
 ): Promise<OtpGenerateResp> {
@@ -236,7 +279,7 @@ export async function otpGenerate(
     metadata,
     returnOtpInResponse,
     token,
-    replaceActive, // <-- nuevo
+    replaceActive,
   } = options ?? {};
   try {
     const data = await apiFetch<OtpGenerateOk>("/api/otp/generate", {
@@ -251,12 +294,11 @@ export async function otpGenerate(
         ...(ttlSeconds ? { ttlSeconds } : {}),
         ...(metadata ? { metadata } : {}),
         ...(returnOtpInResponse ? { returnOtpInResponse: true } : {}),
-        ...(typeof replaceActive === "boolean" ? { replaceActive } : {}), // <-- enviar flag
+        ...(typeof replaceActive === "boolean" ? { replaceActive } : {}),
       },
     });
-    return data; // ok:true...
+    return data;
   } catch (error: any) {
-    // Normaliza error para que el front NO truene por tipos
     const body = error?.body;
     const errMsg =
       (body && (body.error || body.message)) ||
@@ -268,11 +310,11 @@ export async function otpGenerate(
 
 // --------- Usuarios: actualizar perfil actual (PUT + id) ----------------
 export type UpdateUsuarioPayload = {
-  id: string;               // ⬅️ requerido por tu API
+  id: string;
   nombre?: string;
   apellido?: string;
   telefono?: string;
-  dni?: string | null;      // dígitos o null
+  dni?: string | null;
   email?: string;
   avatar_url?: string | null;
   phone_verified?: boolean;
@@ -288,17 +330,19 @@ export async function actualizarUsuarioActual(
 ): Promise<UpdateUsuarioResult> {
   try {
     const res = await apiFetch<UpdateUsuarioResult>("/api/usuarios/actualizar", {
-      method: "PUT",                   // ⬅️ TU API EXPORTA PUT
+      method: "PUT",
       headers: {
         ...withAuthHeader(token),
       },
-      body: payload,                   // ⬅️ incluye { id, ... }
+      body: payload,
     });
-    // Normaliza por si el backend no manda ok explícito
     if (res?.ok === true) return res;
     return { ok: true, message: (res as any)?.message ?? "Actualizado." };
   } catch (error: any) {
-    return { ok: false, message: error?.message ?? "No se pudo actualizar el usuario." };
+    return {
+      ok: false,
+      message: error?.message ?? "No se pudo actualizar el usuario.",
+    };
   }
 }
 
@@ -317,7 +361,7 @@ export async function otpVerify(
 ): Promise<OtpVerifyResponse> {
   const body: Record<string, string> = {
     id_accion,
-    otp: otp.normalize("NFKC").replace(/\D+/g, ""), // solo dígitos
+    otp: otp.normalize("NFKC").replace(/\D+/g, ""),
   };
   if (opts?.id_event) body.id_event = opts.id_event;
   if (opts?.email) body.email = opts.email;
@@ -334,10 +378,13 @@ export async function otpVerify(
       body,
     });
   } catch (error: any) {
-    // Normaliza error para que el front lo pueda mostrar
     const body = error?.body;
     const reason = body?.reason || undefined;
-    const message = body?.message || body?.error || error?.message || "Error al verificar OTP.";
+    const message =
+      body?.message ||
+      body?.error ||
+      error?.message ||
+      "Error al verificar OTP.";
     const details = body?.details || undefined;
     return { ok: false, reason, message, details };
   }
@@ -350,19 +397,14 @@ export type Colonia = {
   is_active: boolean;
   tiene_cobertura: boolean;
   referencia: string | null;
-  updated_at: string; // ISO
+  updated_at: string;
 };
 
 export async function fetchColoniasActivasConCobertura(options?: {
-  /** filtro por nombre (contiene, case-insensitive) */
   search?: string;
-  /** tamaño de página */
   limit?: number;
-  /** desplazamiento para paginación */
   offset?: number;
-  /** columna de orden (por defecto id_colonia) */
   orderBy?: "id_colonia" | "nombre_colonia" | "updated_at";
-  /** dirección de orden */
   orderDir?: "asc" | "desc";
 }) {
   const {
@@ -385,41 +427,37 @@ export async function fetchColoniasActivasConCobertura(options?: {
     if (typeof offset === "number") qs.set("offset", String(offset));
     if (search && search.trim()) qs.set("search", search.trim());
 
-    // Asumiendo que tu backend expone /api/colonias y respeta estos query params
-    // (p. ej., los traduces a filtros en tu route handler o en tu BFF).
-    return await apiFetch<Colonia[]>(`/api/colonias?${qs.toString()}`);
-  } catch (error) {
-    console.error("Error fetchColoniasActivasConCobertura:", error);
+    const res = await apiFetch<Colonia[]>(`/api/colonias?${qs.toString()}`);
+    return Array.isArray(res) ? res : [];
+  } catch {
     return [] as Colonia[];
   }
 }
-
 
 // --------- Direcciones: crear -----------------------------------------
 export type DireccionRow = {
   id_direccion: number;
   uid: string;
-  latitude: number;       // Postgres DECIMAL devuelto como number si cabe
+  latitude: number;
   longitude: number;
   tipo_direccion: number;
   id_colonia: number | null;
   nombre_direccion: string | null;
   isPrincipal: boolean;
   referencia: string | null;
-  created_at: string;     // ISO
-  updated_at: string;     // ISO
+  created_at: string;
+  updated_at: string;
 };
 
 export type CrearDireccionPayload = {
-  uid: string;                       // requerido
-  latitude: number;                  // requerido
-  longitude: number;                 // requerido
-  tipo_direccion: number;                 // requerido
+  uid: string;
+  latitude: number;
+  longitude: number;
+  tipo_direccion: number;
   id_colonia?: number | null;
-  nombre_direccion?: string | null;  // "Casa", "Oficina", ...
-  isPrincipal?: boolean;             // default false
+  nombre_direccion?: string | null;
+  isPrincipal?: boolean;
   referencia?: string | null;
-  /** Si true (default), el backend desmarca otras principales del mismo uid */
   enforceSinglePrincipal?: boolean;
 };
 
@@ -427,10 +465,6 @@ export type CrearDireccionResult =
   | { ok: true; direccion: DireccionRow }
   | { ok: false; message: string };
 
-/**
- * Crea una dirección llamando a POST /api/direcciones
- * Si pasas un access token (Supabase) se enviará en Authorization: Bearer <token>
- */
 export async function crearDireccion(
   payload: CrearDireccionPayload,
   token?: string
@@ -445,66 +479,78 @@ export async function crearDireccion(
     });
     return { ok: true, direccion: data };
   } catch (error: any) {
-    console.error("Error crearDireccion:", error);
-    return { ok: false, message: error?.message ?? "No se pudo crear la dirección." };
+    logApiError("Error crearDireccion", error);
+    return {
+      ok: false,
+      message: error?.message ?? "No se pudo crear la dirección.",
+    };
   }
 }
 
 // --------- Direcciones: leer por uid -----------------------------------
-export type Direccion = DireccionRow; // reutiliza el tipo ya definido más arriba
+export type Direccion = DireccionRow;
 
 export async function fetchDireccionesByUid(
   uid: string,
   options?: {
-    principalOnly?: boolean; // si true, solo devuelve la principal
+    principalOnly?: boolean;
     limit?: number;
     offset?: number;
-    token?: string;          // access_token de Supabase (opcional)
+    token?: string;
   }
 ): Promise<Direccion[]> {
   const { principalOnly, limit, offset, token } = options ?? {};
   try {
     const qs = new URLSearchParams({ uid });
-    if (typeof principalOnly === "boolean") qs.set("principalOnly", String(principalOnly));
+    if (typeof principalOnly === "boolean")
+      qs.set("principalOnly", String(principalOnly));
     if (typeof limit === "number") qs.set("limit", String(limit));
     if (typeof offset === "number") qs.set("offset", String(offset));
 
-    return await apiFetch<Direccion[]>(`/api/direcciones?${qs.toString()}`, {
+    const res = await apiFetch<Direccion[]>(`/api/direcciones?${qs.toString()}`, {
       headers: { ...withAuthHeader(token) },
     });
-  } catch (error) {
-    console.error("Error fetchDireccionesByUid:", error);
+    return Array.isArray(res) ? res : [];
+  } catch (error: any) {
+    logApiError("Error fetchDireccionesByUid", error);
     return [];
   }
 }
 
-/** Conveniencia: trae solo la dirección principal (o null si no existe) */
 export async function fetchDireccionPrincipal(
   uid: string,
   token?: string
 ): Promise<Direccion | null> {
   try {
-    const list = await fetchDireccionesByUid(uid, { principalOnly: true, token, limit: 1, offset: 0 });
+    const list = await fetchDireccionesByUid(uid, {
+      principalOnly: true,
+      token,
+      limit: 1,
+      offset: 0,
+    });
     return list[0] ?? null;
-  } catch (error) {
-    console.error("Error fetchDireccionPrincipal:", error);
+  } catch (error: any) {
+    logApiError("Error fetchDireccionPrincipal", error);
     return null;
   }
 }
 
-
 export async function eliminarDireccion(id: number) {
-  const t0 = Date.now();
   const url = `/api/direcciones?id=${id}`;
 
-
   try {
-    const resp = await apiFetch<{ message?: string; deletedId: number }>(url, { method: "DELETE" });
-   
+    const resp = await apiFetch<{ message?: string; deletedId: number }>(url, {
+      method: "DELETE",
+    });
+
     return { ok: true as const, deletedId: resp.deletedId };
   } catch (error: any) {
-   
-    return { ok: false as const, message: error?.message ?? "No se pudo eliminar la dirección.", status: error?.status };
+    logApiError("Error eliminarDireccion", error);
+    return {
+      ok: false as const,
+      message: error?.message ?? "No se pudo eliminar la dirección.",
+      status: error?.status,
+    };
   }
 }
 
@@ -514,7 +560,6 @@ export async function fetchDireccionById(
   token?: string
 ): Promise<Direccion | null> {
   if (!Number.isFinite(id_direccion) || id_direccion <= 0) {
-    console.warn("fetchDireccionById: id_direccion inválido:", id_direccion);
     return null;
   }
 
@@ -524,17 +569,15 @@ export async function fetchDireccionById(
     });
     return data ?? null;
   } catch (error: any) {
-    // Si la API devuelve 404, normalizamos a null (no encontrada)
     if (error?.status === 404) return null;
-    console.error("Error fetchDireccionById:", error);
+    logApiError("Error fetchDireccionById", error);
     return null;
   }
 }
 
-
 // --------- Direcciones: actualizar (PUT) -------------------------------
 export type ActualizarDireccionPayload = {
-  id_direccion: number;             // requerido (se envía también en query ?id=)
+  id_direccion: number;
   nombre_direccion?: string | null;
   latitude?: number;
   longitude?: number;
@@ -547,11 +590,6 @@ export type ActualizarDireccionResult =
   | { ok: true; direccion: DireccionRow }
   | { ok: false; message: string; status?: number };
 
-/**
- * Actualiza una dirección llamando a PUT /api/direcciones.
- * - Envía el id por query (?id=) y también en el body (por compatibilidad).
- * - Solo los campos presentes en el body serán actualizados por el backend.
- */
 export async function actualizarDireccion(
   payload: ActualizarDireccionPayload,
   token?: string
@@ -561,17 +599,19 @@ export async function actualizarDireccion(
       return { ok: false, message: "id_direccion inválido." };
     }
 
-    const qs = new URLSearchParams({ id: String(payload.id_direccion) }).toString();
+    const qs = new URLSearchParams({
+      id: String(payload.id_direccion),
+    }).toString();
 
     const data = await apiFetch<DireccionRow>(`/api/direcciones?${qs}`, {
       method: "PUT",
       headers: { ...withAuthHeader(token) },
-      body: payload, // el backend sólo actualizará las props definidas
+      body: payload,
     });
 
     return { ok: true, direccion: data };
   } catch (error: any) {
-    console.error("Error actualizarDireccion:", error);
+    logApiError("Error actualizarDireccion", error);
     return {
       ok: false,
       message: error?.message ?? "No se pudo actualizar la dirección.",
@@ -580,13 +620,12 @@ export async function actualizarDireccion(
   }
 }
 
-
 // --------- Carrito: validar precios y stock ----------------------------
 export type CartValidateItemInput = {
-  id: number;           // id_producto en BD
-  price: number;        // precio que trae el cliente
-  quantity: number;     // cantidad solicitada
-  title?: string;       // opcional (para logs o UI)
+  id: number;
+  price: number;
+  quantity: number;
+  title?: string;
 };
 
 export type CartValidateOk = {
@@ -647,24 +686,18 @@ export type CartValidateItemResult =
   | CartValidateNotFound;
 
 export type CartValidateResponse = {
-  ok: boolean; // true solo si todos los items están "ok"
+  ok: boolean;
   items: CartValidateItemResult[];
   totals: {
-    serverSubtotal: number; // calculado con precio/cant de BD
+    serverSubtotal: number;
   };
 };
 
-/**
- * Valida el carrito contra el backend.
- * - Envía { items } al endpoint POST /api/cart/validate
- * - Soporta Authorization opcional via Bearer token
- */
 export async function validateCart(
   items: CartValidateItemInput[],
   token?: string
 ): Promise<CartValidateResponse> {
   try {
-    // Sanitizar payload mínimo para evitar enviar props extra
     const payload = {
       items: items.map(({ id, price, quantity, title }) => ({
         id,
@@ -680,7 +713,6 @@ export async function validateCart(
       body: payload,
     });
 
-    // Normalización defensiva por si el backend cambia algo menor
     return {
       ok: Boolean(data?.ok),
       items: Array.isArray(data?.items) ? data.items : [],
@@ -689,8 +721,7 @@ export async function validateCart(
       },
     };
   } catch (error: any) {
-    console.error("Error validateCart:", error);
-    // No reventar la app: devolver estructura conocida con ok=false
+    logApiError("Error validateCart", error);
     return {
       ok: false,
       items: [],
@@ -699,29 +730,26 @@ export async function validateCart(
   }
 }
 
-
 // --------- Métodos de pago: activos ------------------------------------
 export type MetodoPago = {
   id_metodo: number;
   nombre?: string;
-  // otros campos que tengas...
-  // activo?: boolean; // opcional si igual ya te llegan filtrados
 };
 
 export async function fetchMetodosActivos(): Promise<MetodoPago[]> {
   try {
-    const res = await apiFetch<{ ok: boolean; items: MetodoPago[] }>("/api/metodos");
+    const res = await apiFetch<{ ok: boolean; items: MetodoPago[] }>(
+      "/api/metodos"
+    );
     if (res?.ok && Array.isArray(res.items)) return res.items;
     return [];
-  } catch (error) {
-    console.error("Error fetchMetodosActivos:", error);
+  } catch (error: any) {
+    logApiError("Error fetchMetodosActivos", error);
     return [];
   }
 }
 
-
 // --------- Orders: crear (POST /api/orders) ----------------------------
-
 export type OrderItemInput = {
   id_producto: number;
   qty: number;
@@ -730,10 +758,9 @@ export type OrderItemInput = {
 };
 
 export type CreateOrderPayload = {
-  id_status: number;               // requerido
-  items: OrderItemInput[];         // requerido
+  id_status: number;
+  items: OrderItemInput[];
 
-  // opcionales del header
   uid?: string;
   delivery?: number;
   isv?: number;
@@ -746,12 +773,11 @@ export type CreateOrderPayload = {
   observacion?: string | null;
   usuario_actualiza?: string | null;
 
-  // actividad inicial (opcional)
   actividad_observacion?: string | null;
 };
 
 export type CreateOrderOk = {
-  message: string;                 // "Orden creada correctamente."
+  message: string;
   reqId: string;
   data: {
     id_order: number;
@@ -764,33 +790,25 @@ export type CreateOrderErr = { message: string; reqId?: string };
 
 export type CreateOrderResp = CreateOrderOk | CreateOrderErr;
 
-/**
- * Crea una orden llamando a POST /api/orders
- * - Envía Authorization si pasas un token (opcional)
- */
 export async function createOrderRequest(
   payload: CreateOrderPayload,
   token?: string
 ): Promise<CreateOrderResp> {
   try {
-
-    console.log("payload:", payload);
-    
     const data = await apiFetch<CreateOrderOk>("/api/orders", {
       method: "POST",
       headers: { ...withAuthHeader(token) },
       body: payload,
-      timeoutMs: 15000, // opcional, un poco más alto por el insert múltiple
+      timeoutMs: 15000,
     });
-    // Normalización defensiva
     if (data?.data?.id_order) return data;
     return { message: "Respuesta inesperada del servidor." };
   } catch (error: any) {
-    // Mantén el contrato CreateOrderResp para que el front no truene
-    return { message: error?.message ?? "No se pudo crear la orden." };
+    return {
+      message: error?.message ?? "No se pudo crear la orden.",
+    };
   }
 }
-
 
 export type OrderHeadApi = {
   id_order: number;
@@ -825,41 +843,33 @@ type OrdersHeadApiResponse = {
   data: OrderHeadApi[];
 };
 
-/**
- * Trae las órdenes (encabezados) de un usuario dado su uid.
- * Llama a GET /api/orders?uid=<uid>
- */
 export async function fetchOrdersHeadByUid(
   uid: string,
   token?: string
 ): Promise<OrderHeadApi[]> {
   if (!uid || uid.trim() === "") {
-    console.warn("fetchOrdersHeadByUid: uid vacío o inválido");
-    throw new Error("Debe enviar un uid válido.");
+    // uid inválido -> devolvemos lista vacía en vez de lanzar
+    return [];
   }
 
   try {
     const qs = new URLSearchParams({ uid }).toString();
 
-    const res = await apiFetch<OrdersHeadApiResponse>(
-      `/api/orders?${qs}`, // ✅ AQUÍ ESTABA EL BUG
-      {
-        method: "GET",
-        headers: {
-          ...withAuthHeader(token),
-        },
-      }
-    );
+    const res = await apiFetch<OrdersHeadApiResponse>(`/api/orders?${qs}`, {
+      method: "GET",
+      headers: {
+        ...withAuthHeader(token),
+      },
+    });
 
     return Array.isArray(res.data) ? res.data : [];
-  } catch (error) {
-    console.error("Error fetchOrdersHeadByUid:", error);
+  } catch (error: any) {
+    logApiError("Error fetchOrdersHeadByUid", error);
     return [];
   }
 }
 
 // --------- Orders: detalle por id (GET /api/orders/:id) ----------------
-
 export type OrderDetailApi = {
   id_det: number;
   id_order: number;
@@ -868,7 +878,6 @@ export type OrderDetailApi = {
   precio: number;
   id_bodega: number | null;
   sub_total: number | null;
-  // campos enriquecidos
   nombre_producto: string | null;
   url_imagen: string | null;
 };
@@ -880,7 +889,6 @@ export type OrderActivityApi = {
   fecha_actualizacion: string | null;
   usuario_actualiza: string | null;
   observacion: string | null;
-  // campo enriquecido
   status: string | null;
 };
 
@@ -896,18 +904,12 @@ type OrderByIdApiResponse = {
   data: OrderByIdApi | null;
 };
 
-/**
- * Trae el detalle completo de una orden:
- * head + det + activity.
- * Llama a GET /api/orders/:id_order
- */
 export async function fetchOrderById(
   id_order: number,
   token?: string
 ): Promise<OrderByIdApi | null> {
   if (!Number.isFinite(id_order) || id_order <= 0) {
-    console.warn("fetchOrderById: id_order inválido:", id_order);
-    throw new Error("Debe enviar un id_order válido.");
+    return null;
   }
 
   try {
@@ -920,13 +922,11 @@ export async function fetchOrderById(
 
     return res.data ?? null;
   } catch (error: any) {
-    // Si la API devuelve 404, normalizamos a null (orden no encontrada)
     if (error?.status === 404) {
-      console.warn(`fetchOrderById: orden ${id_order} no encontrada`);
       return null;
     }
 
-    console.error("Error fetchOrderById:", error);
+    logApiError("Error fetchOrderById", error);
     return null;
   }
 }

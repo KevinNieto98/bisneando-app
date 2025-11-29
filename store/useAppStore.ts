@@ -16,7 +16,8 @@ export interface Product {
   price: number;
   images: string[];
   brand?: string;
-  id_categoria: number; // 👈 NUEVO: necesario para filtrar
+  id_categoria: number;  // necesario para filtrar
+  qty: number;           // 👈 NUEVO: stock del producto
 }
 
 interface AppStore {
@@ -64,7 +65,8 @@ export const useAppStore = create<AppStore>((set) => ({
               .filter((u: any) => typeof u === "string" && u.length > 0)
           : [],
         brand: prod.nombre_marca || undefined,
-        // 👇 Asegura traer el id de categoría (ajusta alias si tu API usa otro nombre)
+
+        // id de categoría (ajusta alias si tu API usa otro nombre)
         id_categoria:
           Number(
             prod.id_categoria ??
@@ -72,6 +74,15 @@ export const useAppStore = create<AppStore>((set) => ({
               prod.categoryId ??
               prod.category_id
           ) || 0,
+
+        // 👇 NUEVO: traemos la columna qty como stock
+        qty: Number(
+          prod.qty ??
+          prod.existencia ??
+          prod.stock ??
+          prod.availableQty ??
+          0
+        ),
       }));
 
       set({ products: mapped, loadingProducts: false });

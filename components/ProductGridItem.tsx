@@ -22,13 +22,18 @@ export interface Product {
 interface Props {
   product: Product;
   onAddToCart?: (product: Product) => void;
+  isOutOfStock?: boolean;   // 👈 NUEVO
 }
 
 const { width } = Dimensions.get("window");
 const CARD_MARGIN = 8;
 const CARD_WIDTH = (width - CARD_MARGIN * 2 * 3 - 32) / 3;
 
-export const ProductGridItem: React.FC<Props> = ({ product, onAddToCart }) => {
+export const ProductGridItem: React.FC<Props> = ({
+  product,
+  onAddToCart,
+  isOutOfStock = false,
+}) => {
   const imageUri =
     product.images?.[0] ||
     "https://via.placeholder.com/300x200.png?text=Sin+Imagen";
@@ -41,20 +46,37 @@ export const ProductGridItem: React.FC<Props> = ({ product, onAddToCart }) => {
         maximumFractionDigits: 2,
       }).format(product.price),
     [product.price]
-  
   );
 
-  
+  const handleOpenProduct = () => {
+    if (isOutOfStock) return; // 👈 no navegar si no hay stock
+    router.push(`../product/${product.id}`);
+  };
+
+  const handleCartPress = () => {
+    if (isOutOfStock) return; // 👈 tampoco agregar si no hay stock
+    if (onAddToCart) onAddToCart(product);
+    else router.push(`../product/${product.id}`);
+  };
 
   return (
     <Pressable
       style={({ pressed }) => [
         styles.card,
-        pressed && { opacity: 0.9 }, // feedback al presionar
+        isOutOfStock && styles.cardOutOfStock, // 👈 gris si sin stock
+        pressed && !isOutOfStock && { opacity: 0.9 }, // feedback solo si hay stock
       ]}
-        onPress={() => router.push(`../product/${product.id}`)} // 
+      onPress={handleOpenProduct}
     >
-      <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
+      <View>
+        <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
+        {isOutOfStock && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>Agotado</Text>
+          </View>
+        )}
+      </View>
+
       <View style={styles.info}>
         <View style={styles.textWrapper}>
           {product.brand && (
@@ -65,18 +87,34 @@ export const ProductGridItem: React.FC<Props> = ({ product, onAddToCart }) => {
           <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
             {product.title}
           </Text>
-          <Text style={styles.price}>{priceFormatted}</Text>
+          <Text style={[styles.price, isOutOfStock && styles.priceOutOfStock]}>
+            {priceFormatted}
+          </Text>
         </View>
+
         <Pressable
           style={({ pressed }) => [
             styles.cartButton,
-            pressed && { opacity: 0.7 },
+            isOutOfStock && styles.cartButtonDisabled,
+            pressed && !isOutOfStock && { opacity: 0.7 },
           ]}
-          onPress={() => router.push(`../product/${product.id}`)} 
+          onPress={handleCartPress}
         >
-          <Ionicons name="cart-outline" size={12} color="white" />
-          <Text style={styles.cartText}>+</Text>
+          <Ionicons
+            name="cart-outline"
+            size={12}
+            color={isOutOfStock ? "#9ca3af" : "white"}
+          />
+          <Text
+            style={[
+              styles.cartText,
+              isOutOfStock && styles.cartTextDisabled,
+            ]}
+          >
+            +
+          </Text>
         </Pressable>
+
         <View style={styles.bottomSpacer} />
       </View>
     </Pressable>
@@ -93,6 +131,12 @@ const styles = StyleSheet.create({
     width: CARD_WIDTH,
     height: 180,
     margin: CARD_MARGIN,
+  },
+  // 👇 estado "grisado" visualmente
+  cardOutOfStock: {
+    backgroundColor: "#f3f4f6",
+    borderColor: "#d4d4d8",
+    opacity: 0.6,
   },
   image: {
     width: "100%",
@@ -125,6 +169,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#18181b",
   },
+  priceOutOfStock: {
+    color: "#9ca3af",
+  },
   cartButton: {
     backgroundColor: "#2563eb",
     borderRadius: 6,
@@ -135,12 +182,33 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 2,
   },
+  cartButtonDisabled: {
+    backgroundColor: "#9ca3af",
+  },
   cartText: {
     color: "white",
     fontSize: 9,
     fontWeight: "600",
   },
+  cartTextDisabled: {
+    color: "#9ca3af",
+  },
   bottomSpacer: {
     height: 1,
+  },
+  // badge "Agotado"
+  badge: {
+    position: "absolute",
+    bottom: 4,
+    right: 4,
+    backgroundColor: "rgba(239,68,68,0.9)",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  badgeText: {
+    color: "white",
+    fontSize: 8,
+    fontWeight: "700",
   },
 });

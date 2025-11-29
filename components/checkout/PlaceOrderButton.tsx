@@ -1,6 +1,6 @@
 // components/checkout/PlaceOrderButton.tsx
 import { router } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -9,19 +9,26 @@ import {
   View,
   ViewStyle,
 } from "react-native";
+import ConfirmModal from "../ui/ConfirmModal";
 import Icono from "../ui/Icon.native";
 
 type Variant = "primary" | "warning" | "success" | "danger";
 
 interface PlaceOrderButtonProps {
   disabled?: boolean;
-  loading?: boolean;              // ⬅️ NUEVO: muestra spinner y bloquea el botón
+  loading?: boolean;              // muestra spinner y bloquea el botón
   onPress?: () => void;
   title?: string;
-  titleWhileLoading?: string;     // ⬅️ NUEVO: texto mientras carga
+  titleWhileLoading?: string;     // texto mientras carga
   iconName?: string;
   variant?: Variant;
   style?: ViewStyle;
+
+  // 🔹 Props opcionales para el ConfirmModal
+  confirmTitle?: string;
+  confirmMessage?: string;
+  confirmText?: string;
+  cancelText?: string;
 }
 
 const COLORS: Record<Variant, { bg: string; pressed: string; ripple: string }> = {
@@ -33,50 +40,85 @@ const COLORS: Record<Variant, { bg: string; pressed: string; ripple: string }> =
 
 export function PlaceOrderButton({
   disabled = false,
-  loading = false,                       // ⬅️ default
+  loading = false,
   onPress,
   title = "Colocar orden",
   titleWhileLoading = "Colocando orden...",
   iconName = "ShoppingCart",
   variant = "primary",
   style,
+
+  confirmTitle = "¿Confirmar orden?",
+  confirmMessage = "Revisa que tu dirección, método de pago y productos sean correctos antes de continuar.",
+  confirmText = "Confirmar",
+  cancelText = "Cancelar",
 }: PlaceOrderButtonProps) {
+  const [showConfirm, setShowConfirm] = useState(false);
+
   const isDisabled = disabled || loading;
 
   const handlePress = () => {
     if (isDisabled) return;
-    if (onPress) onPress();
-    else router.push("/success");
+    // ❗ Ya no ejecutamos la acción directo: primero confirmamos
+    setShowConfirm(true);
+  };
+
+  const handleConfirm = () => {
+    setShowConfirm(false);
+    if (onPress) {
+      onPress();
+    } else {
+      // fallback por si algún día se usa sin onPress
+      router.push("/success");
+    }
+  };
+
+  const handleCancel = () => {
+    setShowConfirm(false);
   };
 
   return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.button,
-        {
-          backgroundColor:
-            pressed && !isDisabled ? COLORS[variant].pressed : COLORS[variant].bg,
-        },
-        isDisabled && styles.disabled,
-        style,
-      ]}
-      android_ripple={isDisabled ? undefined : { color: COLORS[variant].ripple }}
-      onPress={handlePress}
-      disabled={isDisabled}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: isDisabled, busy: loading }}
-    >
-      <View style={styles.content}>
-        {loading ? (
-          <ActivityIndicator color="#fff" size="small" />
-        ) : (
-          <Icono name={iconName as any} size={18} color="white" />
-        )}
-        <Text style={styles.text}>
-          {loading ? titleWhileLoading : title}
-        </Text>
-      </View>
-    </Pressable>
+    <>
+      <Pressable
+        style={({ pressed }) => [
+          styles.button,
+          {
+            backgroundColor:
+              pressed && !isDisabled ? COLORS[variant].pressed : COLORS[variant].bg,
+          },
+          isDisabled && styles.disabled,
+          style,
+        ]}
+        android_ripple={isDisabled ? undefined : { color: COLORS[variant].ripple }}
+        onPress={handlePress}
+        disabled={isDisabled}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: isDisabled, busy: loading }}
+      >
+        <View style={styles.content}>
+          {loading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Icono name={iconName as any} size={18} color="white" />
+          )}
+          <Text style={styles.text}>
+            {loading ? titleWhileLoading : title}
+          </Text>
+        </View>
+      </Pressable>
+
+      {/* 🔹 Modal de confirmación */}
+      <ConfirmModal
+        visible={showConfirm}
+        title={confirmTitle}
+        message={confirmMessage}
+        icon="alert-circle"
+        confirmText={confirmText}
+        cancelText={cancelText}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
+    </>
   );
 }
 

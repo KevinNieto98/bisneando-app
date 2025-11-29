@@ -2,6 +2,7 @@ import { ExploreSkeleton } from "@/components";
 import { CategoriesContainer } from "@/components/CategoriesContainer";
 import { ProductGrid } from "@/components/ProductGrid";
 import type { Product } from "@/components/ProductSlideItem";
+import { InternetError } from "@/components/ui/InternetError";
 import { Search } from "@/components/ui/Search";
 import { useAppStore } from "@/store/useAppStore";
 import { useLocalSearchParams } from "expo-router";
@@ -42,13 +43,40 @@ export default function ExploreScreen() {
 
   const [selectedCat, setSelectedCat] = useState<Selected>("all");
   const [searchResults, setSearchResults] = useState<Product[] | null>(null);
-  const [searchResetKey, setSearchResetKey] = useState(0); // 👈 para limpiar el Search
+  const [searchResetKey, setSearchResetKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Cargar data
+  // Estado para "posible error de red"
+  const [networkError, setNetworkError] = useState(false);
+  const [networkErrorMessage] = useState(
+    "No pudimos cargar los productos. Revisa tu conexión a internet."
+  );
+
+  // Cargar data inicial
   useEffect(() => {
-    loadCategories();
-    loadProducts();
-  }, []);
+    const loadInitial = async () => {
+      setNetworkError(false);
+      await Promise.all([loadCategories(), loadProducts()]);
+    };
+
+    loadInitial();
+  }, [loadCategories, loadProducts]);
+
+  // Detectar "posible error de red" cuando termina de cargar y no hay datos
+  useEffect(() => {
+    if (!loadingCategories && !loadingProducts) {
+      if (categories.length === 0 && products.length === 0) {
+        setNetworkError(true);
+      } else {
+        setNetworkError(false);
+      }
+    }
+  }, [
+    loadingCategories,
+    loadingProducts,
+    categories.length,
+    products.length,
+  ]);
 
   // Inicializar categoría desde la ruta
   useEffect(() => {
@@ -89,7 +117,7 @@ export default function ExploreScreen() {
           ?.nombre_categoria ?? "Categoría"
       : null;
 
-  // 🔹 Cuando el usuario selecciona un producto del buscador
+  // Cuando el usuario selecciona un producto del buscador
   const handleSelectProduct = (product: Product | null) => {
     if (!product) {
       setSearchResults(null);
@@ -98,11 +126,19 @@ export default function ExploreScreen() {
     setSearchResults([product]); // Muestra solo ese producto en el grid
   };
 
-  // 🔹 Limpiar filtros + limpiar buscador
+  // Limpiar filtros + limpiar buscador
   const handleClearFilters = () => {
     setSelectedCat("all");
     setSearchResults(null);
     setSearchResetKey((prev) => prev + 1); // fuerza remount del <Search />
+  };
+
+  // Pull-to-refresh de la grilla
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setNetworkError(false);
+    await Promise.all([loadCategories(), loadProducts()]);
+    setRefreshing(false);
   };
 
   return (
@@ -131,9 +167,15 @@ export default function ExploreScreen() {
       >
         {loading ? (
           <ExploreSkeleton />
+        ) : networkError ? (
+          // Vista de "sin conexión"
+          <InternetError
+            message={networkErrorMessage}
+            onRetry={handleRefresh}
+          />
         ) : (
           <>
-            {/* 🎨 Banner moderno y elegante */}
+            {/* Banner de filtro activo */}
             {selectedCat !== "all" && (
               <View style={styles.filterPill}>
                 <Text style={styles.filterPillText}>
@@ -170,7 +212,11 @@ export default function ExploreScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <ProductGrid products={gridProducts} />
+              <ProductGrid
+                products={gridProducts}
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+              />
             )}
           </>
         )}
@@ -193,7 +239,7 @@ const styles = StyleSheet.create({
     marginTop: -8,
   },
 
-  /* 🎨 Nuevo banner tipo "pill" elegante */
+  /* Banner tipo "pill" elegante */
   filterPill: {
     flexDirection: "row",
     justifyContent: "space-between",

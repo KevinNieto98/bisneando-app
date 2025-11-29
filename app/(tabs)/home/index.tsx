@@ -1,9 +1,12 @@
+// app/(tabs)/index.tsx o donde tengas este HomeScreen
+
 import { CategorySkeleton } from "@/components";
 import { CarouselBanner } from "@/components/CarouselBanner";
 import CategorySection from "@/components/CategoySection";
 import { ProductSimilares } from "@/components/ProductSimilares";
 
 import Icono from "@/components/ui/Icon.native";
+import { InternetError } from "@/components/ui/InternetError";
 import Title from "@/components/ui/Title.native";
 import useAuth from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
@@ -37,16 +40,35 @@ export default function HomeScreen() {
   const { welcome } = useLocalSearchParams();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const [showBanner, setShowBanner] = useState(welcome === "1" || welcome === "true");
+  const [showBanner, setShowBanner] = useState(
+    welcome === "1" || welcome === "true"
+  );
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 👇 controla si el padre puede scrollear (para no pelear con el horizontal)
+  // controla si el padre puede scrollear (para no pelear con el horizontal)
   const [parentScroll, setParentScroll] = useState(true);
 
+  // estado para errores de red (opcional, por si en algún lugar sí propagas el error)
+  const [networkError, setNetworkError] = useState(false);
+  const [networkErrorMessage, setNetworkErrorMessage] = useState(
+    "No pudimos cargar la información. Revisa tu conexión a internet."
+  );
+
   useEffect(() => {
-    // carga inicial
-    loadCategories();
-    loadProducts();
+    const loadInitial = async () => {
+      setNetworkError(false);
+      try {
+        await Promise.all([loadCategories(), loadProducts()]);
+      } catch (error: any) {
+        // Si en algún futuro sí propagas errores desde el store, esto lo capturará
+        if (error?.isNetworkError) {
+          setNetworkError(true);
+          if (error?.message) setNetworkErrorMessage(error.message);
+        }
+      }
+    };
+
+    loadInitial();
   }, []);
 
   useEffect(() => {
@@ -61,13 +83,32 @@ export default function HomeScreen() {
     };
   }, [showBanner]);
 
-  // Pull-to-refresh (usa las mismas actions)
-  const onRefresh = () => {
-    loadCategories();
-    loadProducts();
+  // Pull-to-refresh
+  const onRefresh = async () => {
+    setNetworkError(false);
+    try {
+      await Promise.all([loadCategories(), loadProducts()]);
+    } catch (error: any) {
+      if (error?.isNetworkError) {
+        setNetworkError(true);
+        if (error?.message) setNetworkErrorMessage(error.message);
+      }
+    }
   };
 
   const refreshing = loadingCategories || loadingProducts;
+
+  // 🧠 CLAVE: si no hay datos y ya no está cargando, asumimos problema de red
+  const noDataLoaded =
+    !loadingCategories &&
+    !loadingProducts &&
+    categories.length === 0 &&
+    products.length === 0;
+
+  const showInternetError = networkError || noDataLoaded;
+
+  // 🧮 Filtramos productos con stock > 0
+  const productsInStock = products.filter((p: any) => (p.qty ?? 0) > 0);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -104,56 +145,61 @@ export default function HomeScreen() {
           Platform.OS === "android" && { marginTop: StatusBar.currentHeight },
         ]}
       >
-        {/* 👇 FlatList principal (vertical) con pull-to-refresh */}
+        {/* FlatList principal (vertical) con pull-to-refresh */}
         <FlatList
-          data={[{ key: "header" }]}           // lista dummy de un solo ítem
+          data={[{ key: "header" }]} // lista dummy de un solo ítem
           keyExtractor={(item) => item.key}
-          renderItem={null as any}             // no renderiza filas; usamos solo el header
-
-          // 👇 control fino del scroll del padre (iOS: evita roces con horizontal)
+          renderItem={null as any} // no renderiza filas; usamos solo el header
           scrollEnabled={parentScroll}
           directionalLockEnabled
           alwaysBounceVertical
-
           contentContainerStyle={{ paddingBottom: 24 }}
           refreshing={refreshing}
           onRefresh={onRefresh}
           keyboardShouldPersistTaps="handled"
           removeClippedSubviews
-
           ListHeaderComponent={
-            <View>
-              {/* Banner */}
-              <CarouselBanner />
-
-              {/* Categorías */}
-              <Title
-                icon={<Icono name="Tags" size={20} color="#52525b" />}
-                title="Categorías"
+            showInternetError ? (
+              // 👉 SOLO se muestra esto cuando no hay datos (y/o networkError)
+              <InternetError
+                message={networkErrorMessage}
+                onRetry={onRefresh}
               />
-              {loadingCategories ? (
-                <CategorySkeleton />
-              ) : (
-                <CategorySection
-                  categories={categories}
-                  // 👇 desactiva/activa scroll del padre mientras se usa el carrusel
-                  onGestureStart={() => setParentScroll(false)}
-                  onGestureEnd={() => setParentScroll(true)}
+            ) : (
+              <View>
+                {/* Banner / portadas */}
+                <CarouselBanner />
+
+                {/* Categorías */}
+                <Title
+                  icon={<Icono name="Tags" size={20} color="#52525b" />}
+                  title="Categorías"
                 />
-              )}
+                {loadingCategories ? (
+                  <CategorySkeleton />
+                ) : (
+                  <CategorySection
+                    categories={categories}
+                    // desactiva/activa scroll del padre mientras se usa el carrusel
+                    onGestureStart={() => setParentScroll(false)}
+                    onGestureEnd={() => setParentScroll(true)}
+                  />
+                )}
 
-              {/* Productos Destacados */}
-              <Title
-                icon={<Icono name="Star" size={20} color="#52525b" />}
-                title="Productos Destacados"
-                style={{ marginTop: 16 }}
-              />
-              {loadingProducts ? (
-                <ActivityIndicator size="large" color="#000" />
-              ) : (
-                <ProductSimilares products={products} />
-              )}
-            </View>
+                {/* Productos Destacados */}
+                <Title
+                  icon={<Icono name="Star" size={20} color="#52525b" />}
+                  title="Productos Destacados"
+                  style={{ marginTop: 16 }}
+                />
+                {loadingProducts ? (
+                  <ActivityIndicator size="large" color="#000" />
+                ) : (
+                  // 👇 SOLO productos con stock
+                  <ProductSimilares products={productsInStock} />
+                )}
+              </View>
+            )
           }
         />
       </View>
@@ -195,7 +241,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 16, // mantenemos el padding aquí
+    padding: 16,
   },
   successBanner: {
     position: "absolute",
