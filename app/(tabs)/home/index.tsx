@@ -1,22 +1,23 @@
-// app/(tabs)/index.tsx o donde tengas este HomeScreen
-
 import { CategorySkeleton } from "@/components";
 import { CarouselBanner } from "@/components/CarouselBanner";
 import CategorySection from "@/components/CategoySection";
 import { ProductSimilares } from "@/components/ProductSimilares";
 
+import { CartButton } from "@/components/ui/CartButttom";
 import Icono from "@/components/ui/Icon.native";
 import { InternetError } from "@/components/ui/InternetError";
+import { ProductSkeleton } from "@/components/ui/ProductSkeleton";
 import Title from "@/components/ui/Title.native";
 import useAuth from "@/hooks/useAuth";
 import { useAppStore } from "@/store/useAppStore";
-import { router, useLocalSearchParams, usePathname } from "expo-router";
+import { useCartStore } from "@/store/useCartStore";
+import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
   Image,
   Platform,
+  RefreshControl,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -24,6 +25,51 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+
+// =========================================================================
+// Mock de la barra de búsqueda (al presionar navega a /explore)
+// =========================================================================
+const SearchInputMock = () => {
+  const handlePress = () => {
+    router.push("/explore");
+  };
+
+  return (
+    <TouchableOpacity 
+      style={mockStyles.searchContainer} 
+      onPress={handlePress}
+      activeOpacity={0.8}
+    >
+      <Icono name="Search" size={18} color="#71717a" />
+      <Text style={mockStyles.searchText}>Buscar productos...</Text>
+    </TouchableOpacity>
+  );
+};
+
+const mockStyles = StyleSheet.create({
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 15,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 4
+  },
+  searchText: {
+    marginLeft: 8,
+    color: '#71717a',
+    fontSize: 15,
+  },
+});
+// =========================================================================
+
 
 export default function HomeScreen() {
   const {
@@ -36,23 +82,20 @@ export default function HomeScreen() {
   } = useAppStore();
 
   const { user } = useAuth();
+  const totalItems = useCartStore((s) => s.totalItems());
 
-  const { welcome } = useLocalSearchParams();
-  const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const [showBanner, setShowBanner] = useState(
-    welcome === "1" || welcome === "true"
-  );
+  const [showBanner, setShowBanner] = useState(false);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // controla si el padre puede scrollear (para no pelear con el horizontal)
-  const [parentScroll, setParentScroll] = useState(true);
-
-  // estado para errores de red (opcional, por si en algún lugar sí propagas el error)
+  // estado para errores de red
   const [networkError, setNetworkError] = useState(false);
   const [networkErrorMessage, setNetworkErrorMessage] = useState(
     "No pudimos cargar la información. Revisa tu conexión a internet."
   );
+
+  // estado de refresco (pull-to-refresh)
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const loadInitial = async () => {
@@ -60,10 +103,9 @@ export default function HomeScreen() {
       try {
         await Promise.all([loadCategories(), loadProducts()]);
       } catch (error: any) {
-        // Si en algún futuro sí propagas errores desde el store, esto lo capturará
         if (error?.isNetworkError) {
           setNetworkError(true);
-          if (error?.message) setNetworkErrorMessage(error.message);
+          if (error?.message) setNetworkErrorMessage(error.message); 
         }
       }
     };
@@ -71,20 +113,20 @@ export default function HomeScreen() {
     loadInitial();
   }, []);
 
+  // Opcional: puedes activar el banner manualmente más adelante si quieres
   useEffect(() => {
-    if (showBanner) {
-      bannerTimerRef.current = setTimeout(() => {
-        setShowBanner(false);
-        router.replace(pathname as any);
-      }, 5000);
-    }
+    if (!showBanner) return;
+    bannerTimerRef.current = setTimeout(() => {
+      setShowBanner(false);
+    }, 5000);
     return () => {
       if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
     };
   }, [showBanner]);
 
-  // Pull-to-refresh
+  // Pull-to-refresh sobre ScrollView
   const onRefresh = async () => {
+    setRefreshing(true);
     setNetworkError(false);
     try {
       await Promise.all([loadCategories(), loadProducts()]);
@@ -93,12 +135,12 @@ export default function HomeScreen() {
         setNetworkError(true);
         if (error?.message) setNetworkErrorMessage(error.message);
       }
+    } finally {
+      setRefreshing(false);
     }
   };
 
-  const refreshing = loadingCategories || loadingProducts;
-
-  // 🧠 CLAVE: si no hay datos y ya no está cargando, asumimos problema de red
+  // si no hay datos y ya no está cargando, asumimos problema de red
   const noDataLoaded =
     !loadingCategories &&
     !loadingProducts &&
@@ -107,18 +149,12 @@ export default function HomeScreen() {
 
   const showInternetError = networkError || noDataLoaded;
 
-  // 🧮 Filtramos productos con stock > 0
+  // solo productos con stock > 0
   const productsInStock = products.filter((p: any) => (p.qty ?? 0) > 0);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
-
-      {showBanner && (
-        <View style={[styles.successBanner, { paddingTop: insets.top + 8 }]}>
-          <Text style={styles.successText}>Bienvenido a Bisneando</Text>
-        </View>
-      )}
 
       {/* Header */}
       <View style={styles.header}>
@@ -128,15 +164,23 @@ export default function HomeScreen() {
           resizeMode="contain"
         />
 
-        {user && (
-          <TouchableOpacity
-            style={styles.notificationButton}
-            onPress={() => router.push("/notifications")}
-          >
-            <Icono name="Bell" size={22} color="#27272a" />
-          </TouchableOpacity>
-        )}
+        {/* Agrupar Notificaciones y Carrito */}
+        <View style={styles.rightHeaderIcons}>
+          {user && (
+            <TouchableOpacity
+              style={styles.notificationButton}
+              onPress={() => router.push("/notifications")}
+            >
+              <Icono name="Bell" size={22} color="#27272a" />
+            </TouchableOpacity>
+          )}
+
+          <CartButton count={totalItems} />
+        </View>
       </View>
+      
+      {/* MOCK DE SEARCH INPUT */}
+      <SearchInputMock />
 
       {/* Contenedor con fondo blanco y bordes redondeados */}
       <View
@@ -145,63 +189,72 @@ export default function HomeScreen() {
           Platform.OS === "android" && { marginTop: StatusBar.currentHeight },
         ]}
       >
-        {/* FlatList principal (vertical) con pull-to-refresh */}
-        <FlatList
-          data={[{ key: "header" }]} // lista dummy de un solo ítem
-          keyExtractor={(item) => item.key}
-          renderItem={null as any} // no renderiza filas; usamos solo el header
-          scrollEnabled={parentScroll}
-          directionalLockEnabled
-          alwaysBounceVertical
+        <ScrollView
           contentContainerStyle={{ paddingBottom: 24 }}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          keyboardShouldPersistTaps="handled"
-          removeClippedSubviews
-          ListHeaderComponent={
-            showInternetError ? (
-              // 👉 SOLO se muestra esto cuando no hay datos (y/o networkError)
-              <InternetError
-                message={networkErrorMessage}
-                onRetry={onRefresh}
-              />
-            ) : (
-              <View>
-                {/* Banner / portadas */}
-                <CarouselBanner />
-
-                {/* Categorías */}
-                <Title
-                  icon={<Icono name="Tags" size={20} color="#52525b" />}
-                  title="Categorías"
-                />
-                {loadingCategories ? (
-                  <CategorySkeleton />
-                ) : (
-                  <CategorySection
-                    categories={categories}
-                    // desactiva/activa scroll del padre mientras se usa el carrusel
-                    onGestureStart={() => setParentScroll(false)}
-                    onGestureEnd={() => setParentScroll(true)}
-                  />
-                )}
-
-                {/* Productos Destacados */}
-                <Title
-                  icon={<Icono name="Star" size={20} color="#52525b" />}
-                  title="Productos Destacados"
-                  style={{ marginTop: 16 }}
-                />
-                {loadingProducts ? (
-                  <ActivityIndicator size="large" color="#000" />
-                ) : (
-                  // 👇 SOLO productos con stock
-                  <ProductSimilares products={productsInStock} />
-                )}
-              </View>
-            )
+          keyboardShouldPersistTaps="always" 
+          keyboardDismissMode="on-drag"
+          scrollEnabled={true}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
-        />
+        >
+          {/* Banner inline */}
+          {showBanner && (
+            <View
+              style={[
+                styles.inlineBanner,
+                { marginTop: insets.top > 0 ? 4 : 0 },
+              ]}
+            >
+              <Text style={styles.inlineBannerText}>
+                Bienvenido a Bisneando
+              </Text>
+            </View>
+          )}
+
+          {showInternetError ? (
+            <InternetError
+              message={networkErrorMessage}
+              onRetry={onRefresh}
+            />
+          ) : (
+            <View>
+              {/* Banner / portadas */}
+              <CarouselBanner />
+
+              {/* Categorías */}
+              <Title
+                icon={<Icono name="Tags" size={20} color="#52525b" />}
+                title="Categorías"
+              />
+              {loadingCategories ? (
+                <CategorySkeleton />
+              ) : (
+                <TouchableOpacity 
+                    activeOpacity={1} 
+                    onPress={() => {}} 
+                    style={{ flex: 1 }} 
+                    disabled={false}
+                >
+                    <CategorySection categories={categories} />
+                </TouchableOpacity>
+              )}
+
+              {/* Productos Destacados */}
+              <Title
+                icon={<Icono name="Star" size={20} color="#52525b" />}
+                title="Productos Destacados"
+                style={{ marginTop: 16 }}
+              />
+              {loadingProducts ? (
+                // *** USO DEL SKELETON EN VEZ DEL SPINNER ***
+                <ProductSkeleton count={3} />
+              ) : (
+                <ProductSimilares products={productsInStock} />
+              )}
+            </View>
+          )}
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
@@ -231,6 +284,11 @@ const styles = StyleSheet.create({
       android: { width: 180, height: 40 },
     }),
   },
+  rightHeaderIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   notificationButton: {
     padding: 6,
     borderRadius: 20,
@@ -243,24 +301,14 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 16,
   },
-  successBanner: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
+  inlineBanner: {
     backgroundColor: "#16a34a",
-    zIndex: 20,
+    borderRadius: 12,
     paddingHorizontal: 16,
-    paddingBottom: 8,
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    paddingVertical: 10,
+    marginBottom: 12,
   },
-  successText: {
+  inlineBannerText: {
     color: "white",
     fontWeight: "800",
     textAlign: "center",

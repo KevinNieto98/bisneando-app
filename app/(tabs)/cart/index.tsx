@@ -200,7 +200,7 @@ export default function CartScreen() {
               items={items}
               onValidationFail={handleValidationFail}
               // 👇 NUEVO: qué hace "Seguir comprando"
-              onKeepShopping={() => router.push("/")}
+              onKeepShopping={() => router.push("/(tabs)/explore")}
               // si prefieres ir a otra pantalla:
               // onKeepShopping={() => router.push("/explore")}
             />

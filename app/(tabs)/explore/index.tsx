@@ -5,7 +5,7 @@ import type { Product } from "@/components/ProductSlideItem";
 import { InternetError } from "@/components/ui/InternetError";
 import { Search } from "@/components/ui/Search";
 import { useAppStore } from "@/store/useAppStore";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Trash2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -150,6 +150,7 @@ export default function ExploreScreen() {
         key={searchResetKey}
         products={filteredProducts}
         onSelect={handleSelectProduct}
+        onBack={() => router.push("/home")}
         onSubmitSearch={({ query, results }) => {
           if (!query || query.trim().length < 3) {
             setSearchResults(null);
@@ -162,7 +163,8 @@ export default function ExploreScreen() {
       <View
         style={[
           styles.productsContainer,
-          Platform.OS === "android" && { marginTop: StatusBar.currentHeight },
+          // *** CAMBIO 2: Eliminar marginTop: -8 para corregir espacio amarillo en Android ***
+          Platform.OS === "android" && { marginTop: StatusBar.currentHeight ? 0 : 0 }, 
         ]}
       >
         {loading ? (
@@ -236,7 +238,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 16,
-    marginTop: -8,
+    // *** CAMBIO 2: Eliminamos la superposición (marginTop: -8) ***
+    // Esto se maneja mejor en la prop de View condicional en Android
   },
 
   /* Banner tipo "pill" elegante */
@@ -245,7 +248,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: "#FFF8C8",
-    paddingVertical: 10,
+    // *** CAMBIO 1: Reducción de la altura vertical ***
+    paddingVertical: 8, // Reducido de 10 a 8
     paddingHorizontal: 14,
     borderRadius: 50,
     marginBottom: 14,

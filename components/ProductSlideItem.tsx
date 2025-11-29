@@ -62,7 +62,7 @@ export const ProductSlideItem: React.FC<Props> = ({ product, onAddToCart }) => {
           ]}
            onPress={() => router.push(`../product/${product.id}`)} 
         >
-          <Ionicons name="cart-outline" size={18} color="white" />
+          <Ionicons name="cart-outline" size={16} color="white" />
           <Text style={styles.cartText}>Agregar</Text>
         </Pressable>
 
@@ -76,12 +76,14 @@ export const ProductSlideItem: React.FC<Props> = ({ product, onAddToCart }) => {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "white",
-    borderRadius: 14,
+    borderRadius: 12, // Ligeramente más pequeño
     borderWidth: 1,
     borderColor: "#e5e7eb",
     overflow: "hidden",
-    width: 170,
-    height: 240,
+    // *** REDUCCIÓN DE TAMAÑO ***
+    width: 140, // De 170 a 140
+    height: 210, // De 240 a 210
+    // **************************
     marginHorizontal: 10,
     shadowColor: "#000",
     shadowOpacity: 0.07,
@@ -90,12 +92,12 @@ const styles = StyleSheet.create({
   },
   image: {
     width: "100%",
-    height: 120,
+    height: 90, // De 120 a 90
   },
   info: {
     flex: 1,
     justifyContent: "space-between",
-    padding: 10,
+    padding: 8, // Ligeramente menos padding
   },
   textWrapper: {
     flexShrink: 1,
@@ -108,32 +110,32 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   title: {
-    fontSize: 13,
+    fontSize: 12, // Ligeramente más pequeño
     fontWeight: "500",
     color: "#3f3f46",
-    minHeight: 32,
-    lineHeight: 17,
+    minHeight: 30,
+    lineHeight: 16,
   },
   price: {
-    fontSize: 14,
+    fontSize: 13, // Ligeramente más pequeño
     fontWeight: "700",
     color: "#18181b",
-    marginBottom: 8,
+    marginBottom: 6, // Reducido
   },
   cartButton: {
-    marginTop: 6,
+    marginTop: 4, // Reducido
     backgroundColor: "#2563eb",
-    borderRadius: 10,
-    paddingVertical: 5,
-    paddingHorizontal: 8,
+    borderRadius: 8, // Ligeramente más pequeño
+    paddingVertical: 4, // Reducido
+    paddingHorizontal: 6, // Reducido
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
+    gap: 4, // Reducido
   },
   cartText: {
     color: "white",
-    fontSize: 12,
+    fontSize: 11, // Más pequeño
     fontWeight: "600",
   },
   bottomSpacer: {

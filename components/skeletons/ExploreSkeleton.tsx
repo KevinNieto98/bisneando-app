@@ -1,14 +1,27 @@
 // components/skeletons/ExploreSkeleton.tsx
 import React from "react";
-import { Dimensions, FlatList, ScrollView, StyleSheet, View } from "react-native";
+import { Dimensions, ScrollView, StyleSheet, View } from "react-native";
 
 const { width } = Dimensions.get("window");
-const CARD_MARGIN = 4;
-const CARD_WIDTH = (width - CARD_MARGIN * 2 * 3 - 32) / 4;
+
+// --- AJUSTES CLAVE ---
+// 1. Usaremos 3 columnas (numColumns={3}).
+const NUM_COLUMNS = 3;
+// 2. Definimos el espacio deseado entre las tarjetas (gap).
+const ITEM_GAP = 8;
+// 3. El padding horizontal total del ScrollView es 32 (16 + 16).
+const SCREEN_PADDING = 32;
+
+// Cálculo del ancho: (Ancho total disponible - (Gap interno * (Columnas - 1))) / Columnas
+const CARD_WIDTH = (width - SCREEN_PADDING - (ITEM_GAP * (NUM_COLUMNS - 1))) / NUM_COLUMNS;
+// ---------------------
 
 const ExploreSkeleton = () => {
-  // placeholders para las tarjetas
-  const placeholders = Array.from({ length: 6 }).map((_, i) => ({ id: i.toString() }));
+  // placeholders: 9 para asegurar 3 filas completas
+  const placeholders = Array.from({ length: 9 }).map((_, i) => ({ id: i.toString() }));
+
+  // Reemplazamos la FlatList por un View que renderiza la rejilla para simplicidad
+  // y para evitar problemas de anidamiento de ScrollView/FlatList.
 
   return (
     <ScrollView
@@ -23,15 +36,21 @@ const ExploreSkeleton = () => {
         ))}
       </View>
 
-      {/* 🔹 Grid de productos */}
-      <FlatList
-        data={placeholders}
-        numColumns={3}
-        keyExtractor={(item) => item.id}
-        scrollEnabled={false} // importante: ScrollView ya maneja el scroll
-        renderItem={() => <View style={styles.card} />}
-        contentContainerStyle={styles.grid}
-      />
+      {/* 🔹 Grid de productos (Usamos un View simple con FlexWrap) */}
+      <View style={styles.gridContainer}>
+        {placeholders.map((item, index) => (
+          <View 
+            key={item.id} 
+            style={[
+              styles.card,
+              // Aplicamos margen derecho solo si no es la última columna
+              (index + 1) % NUM_COLUMNS !== 0 && { marginRight: ITEM_GAP },
+              // Aplicamos margen inferior (gap)
+              { marginBottom: ITEM_GAP }
+            ]} 
+          />
+        ))}
+      </View>
     </ScrollView>
   );
 };
@@ -46,7 +65,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
   },
   content: {
-    padding: 16,
+    padding: 16, // Padding de 16, total 32 horizontal
   },
   chipsRow: {
     flexDirection: "row",
@@ -59,14 +78,20 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: "#e5e7eb",
   },
-  grid: {
+  
+  // --- ESTILOS DE LA REJILLA REPARADOS ---
+  gridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-start", // Alineamos a la izquierda
     paddingBottom: 20,
   },
   card: {
-    width: CARD_WIDTH,
-    height: 180,
+    width: CARD_WIDTH, // Ancho calculado correctamente para 3 columnas
+    height: 140, // Altura ajustada para que no sea excesivamente grande
     borderRadius: 10,
     backgroundColor: "#e5e7eb",
-    margin: CARD_MARGIN,
+    // Eliminamos 'margin' y usamos marginRight y marginBottom condicionalmente arriba
   },
+  // ----------------------------------------
 });

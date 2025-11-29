@@ -1,15 +1,14 @@
-// ProductSimilares.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Pressable,
+  PressableStateCallbackType,
   ScrollView,
   StyleSheet,
-  View,
+  View
 } from "react-native";
-// <- tu versión RN
 import { ProductSlideItem } from "./ProductSlideItem";
 import Icono from "./ui/Icon.native";
 
@@ -24,17 +23,18 @@ export interface Product {
 
 interface Props {
   products: Product[];
-  itemWidth?: number; // ancho de cada tarjeta en px (útil para tablet)
-  gap?: number;       // espacio entre tarjetas
-  autoplaySpeed?: number; // px por frame (~60fps); ej. 0.5
-  resumeDelayMs?: number; // cuánto esperar para reanudar después de interacción
+  itemWidth?: number; 
+  gap?: number;       
+  autoplaySpeed?: number; 
+  resumeDelayMs?: number; 
 }
 
 export const ProductSimilares: React.FC<Props> = ({
+  // *** CAMBIO 1: Reducir el valor por defecto de gap de 8 a 4 ***
   products,
-  itemWidth = 180,      // similar a w-40 / w-60 en web
-  gap = 8,             // gap-3 (12) / md:gap-6 (24) si quieres adaptar
-  autoplaySpeed = 0.6,  // px/frame
+  itemWidth = 140, // Asumiendo el valor ajustado anteriormente (antes 180)
+  gap = 4,         // *** REDUCIDO: Menos separación entre productos ***
+  autoplaySpeed = 0.6,
   resumeDelayMs = 2000,
 }) => {
   const scrollRef = useRef<ScrollView>(null);
@@ -59,7 +59,6 @@ export const ProductSimilares: React.FC<Props> = ({
       if (!paused && scrollRef.current) {
         const nextX = scrollXRef.current + autoplaySpeed;
 
-        // Si pasamos la mitad del contenido, reiniciamos a 0
         if (nextX >= halfWidthRef.current) {
           scrollRef.current.scrollTo({ x: 0, animated: false });
           scrollXRef.current = 0;
@@ -97,7 +96,8 @@ export const ProductSimilares: React.FC<Props> = ({
   const handlePrev = () => {
     if (!scrollRef.current) return;
     setPaused(true);
-    const delta = Math.max(itemWidth + gap, 200); // paso
+    // Usamos itemWidth + gap para el salto exacto
+    const delta = itemWidth + gap; 
     const target = Math.max(scrollXRef.current - delta, 0);
     scrollRef.current.scrollTo({ x: target, animated: true });
     scrollXRef.current = target;
@@ -107,10 +107,10 @@ export const ProductSimilares: React.FC<Props> = ({
   const handleNext = () => {
     if (!scrollRef.current) return;
     setPaused(true);
-    const delta = Math.max(itemWidth + gap, 200);
+    // Usamos itemWidth + gap para el salto exacto
+    const delta = itemWidth + gap;
     let target = scrollXRef.current + delta;
 
-    // si sobrepasamos halfWidth, regresa a 0 para loop seamless
     if (target >= halfWidthRef.current) target = 0;
     scrollRef.current.scrollTo({ x: target, animated: true });
     scrollXRef.current = target;
@@ -132,13 +132,17 @@ export const ProductSimilares: React.FC<Props> = ({
 
   return (
     <View style={styles.root} onLayout={onLayout}>
+      
       {/* Botón Anterior */}
       <Pressable
-        onPress={handlePrev}
-        style={({ pressed }) => [
+        onPressIn={handlePrev} 
+        style={({ pressed }: PressableStateCallbackType) => [
           styles.arrow,
           styles.leftArrow,
-          { transform: [{ scale: pressed ? 0.95 : 1 }] },
+          { 
+            zIndex: 11,
+            transform: [{ scale: pressed ? 0.95 : 1 }] 
+          }
         ]}
         accessibilityRole="button"
         accessibilityLabel="Anterior"
@@ -154,14 +158,13 @@ export const ProductSimilares: React.FC<Props> = ({
         scrollEventThrottle={16}
         onScroll={onScroll}
         onContentSizeChange={(w) => onContentSizeChange(w)}
-        // Pausa cuando el usuario interactúa manualmente
+        keyboardShouldPersistTaps="always"
         onScrollBeginDrag={() => setPaused(true)}
         onScrollEndDrag={resumeLater}
-        // Pausa si mantiene presionado dentro
         onTouchStart={() => setPaused(true)}
         onTouchEnd={resumeLater}
-        // comportamiento suave al usar flechas (animado)
-        contentContainerStyle={[styles.track, { columnGap: gap, paddingHorizontal: 8 }]}
+        // Usamos columnGap que recibe el valor de la prop 'gap' (ahora 4 por defecto)
+        contentContainerStyle={[styles.track, { columnGap: gap, paddingHorizontal: 8 }]} 
       >
         {data.map((product, index) => (
           <View
@@ -175,11 +178,14 @@ export const ProductSimilares: React.FC<Props> = ({
 
       {/* Botón Siguiente */}
       <Pressable
-        onPress={handleNext}
-        style={({ pressed }) => [
+        onPressIn={handleNext} 
+        style={({ pressed }: PressableStateCallbackType) => [
           styles.arrow,
           styles.rightArrow,
-          { transform: [{ scale: pressed ? 0.95 : 1 }] },
+          { 
+            zIndex: 11,
+            transform: [{ scale: pressed ? 0.95 : 1 }] 
+          }
         ]}
         accessibilityRole="button"
         accessibilityLabel="Siguiente"
@@ -202,7 +208,7 @@ const styles = StyleSheet.create({
   arrow: {
     position: "absolute",
     top: "42%",
-    zIndex: 10,
+    zIndex: 10, 
     backgroundColor: "rgba(255,255,255,0.9)",
     borderRadius: 999,
     padding: 8,

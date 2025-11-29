@@ -1,3 +1,4 @@
+import { useCartStore } from "@/store/useCartStore";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
@@ -9,6 +10,7 @@ import {
 } from "react-native";
 import { Searchbar } from "react-native-paper";
 import { Product } from "../ProductSlideItem";
+import { CartButton } from "../ui/CartButttom"; // *** IMPORTAR CartButton ***
 
 interface Props {
   products: Product[];
@@ -28,6 +30,9 @@ export const Search: React.FC<Props> = ({
   const [query, setQuery] = useState("");
   const [filtered, setFiltered] = useState<Product[]>([]);
   const [showOverlay, setShowOverlay] = useState(false); // 👈 controla el “modalsito”
+
+  // *** OBTENER EL CONTEO DEL CARRITO ***
+  const totalItems = useCartStore((s) => s.totalItems());
 
   const handleSearch = (text: string) => {
     setQuery(text);
@@ -83,11 +88,15 @@ export const Search: React.FC<Props> = ({
           placeholder="Buscar producto..."
           onChangeText={handleSearch}
           value={query}
-          style={styles.searchbar}
+          // *** AJUSTE: El flex: 1 se mueve a styles.searchbar ***
+          style={styles.searchbar} 
           icon="magnify"
           onSubmitEditing={handleSubmit}   // ENTER
           onClearIconPress={handleClear}   // X
         />
+
+        {/* *** AÑADIR BOTÓN DEL CARRITO *** */}
+        <CartButton count={totalItems} /> 
       </View>
 
       {/* 🔍 Mensaje flotante (solo cuando NO hay resultados o faltan caracteres) */}
@@ -148,8 +157,11 @@ const styles = StyleSheet.create({
   },
 
   searchbar: {
-    flex: 1,
+    // *** AJUSTE CLAVE: Permite que el Searchbar se comprima y deje espacio al CartButton ***
+    flex: 1, 
     borderRadius: 25,
+    // Agregamos un margen a la derecha para separarlo del botón del carrito
+    marginRight: 8, 
   },
 
   // 🔽 Mensaje flotante
