@@ -25,7 +25,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 // =========================================================================
 // Mock de la barra de búsqueda
@@ -55,8 +55,8 @@ const mockStyles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 15,
-    marginHorizontal: 12,
-    marginBottom: 8,
+    marginHorizontal: 16,
+    marginBottom: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -83,7 +83,6 @@ export default function HomeScreen() {
 
   const { user } = useAuth();
   const totalItems = useCartStore((s) => s.totalItems());
-  const insets = useSafeAreaInsets();
 
   // Estados
   const [refreshing, setRefreshing] = useState(false);
@@ -102,7 +101,6 @@ export default function HomeScreen() {
       const rawData = await fetchActivePortadas();
       console.log("Portadas crudas desde API:", rawData);
 
-      // 👇 MAPEAMOS USANDO LOS CAMPOS REALES: id_portada, link, is_active, etc.
       const mapped: Portada[] = (rawData ?? []).map((p: any) => ({
         id_portada: p.id_portada,
         url_imagen: p.url_imagen,
@@ -182,7 +180,6 @@ export default function HomeScreen() {
 
   const productsInStock = products.filter((p: any) => (p.qty ?? 0) > 0);
 
-  // Navegación cuando se presiona una portada
   const handlePressPortada = (portada: Portada) => {
     console.log("Portada clickeada:", portada.id_portada);
     console.log("Navegando hacia:", portada.link_destino);
@@ -192,11 +189,14 @@ export default function HomeScreen() {
     router.push(portada.link_destino as any);
   };
 
+  // ======================================================================
+  // RENDER
+  // ======================================================================
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar backgroundColor="#FFD600" barStyle="dark-content" />
 
-      {/* Header */}
+      {/* Header fijo arriba sobre fondo amarillo */}
       <View style={styles.header}>
         <Image
           source={require("@/assets/images/bisneando.png")}
@@ -216,24 +216,20 @@ export default function HomeScreen() {
           <CartButton count={totalItems} />
         </View>
       </View>
+          {/* 1. Buscador */}
+          <SearchInputMock />
 
-      {/* Search */}
-      <SearchInputMock />
+          {/* 2. Banner / Portadas */}
+          <View style={styles.bannerWrapper}>
+            <CarouselBanner
+              portadas={portadas}
+              loading={loadingPortadas}
+              onPressPortada={handlePressPortada}
+            />
+          </View>
 
-      {/* Banner / Portadas */}
-      <CarouselBanner
-        portadas={portadas}
-        loading={loadingPortadas}
-        onPressPortada={handlePressPortada}
-      />
-
-      {/* Contenido */}
-      <View
-        style={[
-          styles.content,
-          Platform.OS === "android" && { marginTop: StatusBar.currentHeight },
-        ]}
-      >
+      {/* Contenido blanco con bordes redondeados y todo lo demás dentro del ScrollView */}
+      <View style={styles.content}>
         <ScrollView
           contentContainerStyle={{ paddingBottom: 24 }}
           keyboardShouldPersistTaps="always"
@@ -243,13 +239,15 @@ export default function HomeScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
+
+          {/* 3. Contenido principal */}
           {showInternetError ? (
             <InternetError
               message={networkErrorMessage}
               onRetry={onRefresh}
             />
           ) : (
-            <View>
+            <View style={styles.paddedContentSection}>
               {/* Categorías */}
               <Title
                 icon={<Icono name="Tags" size={20} color="#52525b" />}
@@ -271,7 +269,7 @@ export default function HomeScreen() {
               {loadingProducts ? (
                 <ProductSkeleton count={3} />
               ) : (
-                <ProductSimilares products={productsInStock}  />
+                <ProductSimilares products={productsInStock} />
               )}
             </View>
           )}
@@ -286,7 +284,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFD600",
+    backgroundColor: "#FFD600", // Fondo general amarillo
   },
   header: {
     flexDirection: "row",
@@ -294,9 +292,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     backgroundColor: "#FFD600",
     paddingHorizontal: 16,
+    // Ajuste de altura/padding para iOS/Android sin altura fija
     ...Platform.select({
-      ios: { paddingVertical: 8 },
-      android: { height: 42, paddingTop: 28 },
+      ios: {
+        paddingTop: 8,
+        paddingBottom: 8,
+      },
+      android: {
+        paddingTop: 12,
+        paddingBottom: 8,
+      },
     }),
   },
   logo: {
@@ -320,8 +325,15 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     backgroundColor: "white",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 16,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
+  },
+  bannerWrapper: {
+    paddingBottom: 12,
+    paddingHorizontal: 8,
+  },
+  paddedContentSection: {
+    paddingHorizontal: 16,
   },
 });

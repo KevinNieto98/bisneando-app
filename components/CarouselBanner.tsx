@@ -1,4 +1,3 @@
-// CarouselBanner.tsx
 import React, { useEffect, useMemo, useRef } from "react";
 import {
   Dimensions,
@@ -10,7 +9,18 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { PortadaSkeleton } from ".";
+
+// Simulación de PortadaSkeleton si no existe
+const PortadaSkeleton = () => (
+  <View
+    style={{
+      width: "95%",
+      height: "100%",
+      backgroundColor: "#eee",
+      borderRadius: 8,
+    }}
+  />
+);
 
 const { width: WINDOW_WIDTH } = Dimensions.get("window");
 
@@ -25,23 +35,24 @@ export interface Portada {
 interface Props {
   portadas: Portada[];
   loading?: boolean;
-  itemWidth?: number;              // ancho de cada portada
-  gap?: number;                    // separación entre portadas
+  itemWidth?: number; // ancho de cada portada
+  gap?: number; // separación entre portadas
   onPressPortada?: (portada: Portada, index: number) => void;
-  autoplay?: boolean;              // activar / desactivar autoplay
-  autoplayIntervalMs?: number;     // intervalo entre slides
+  autoplay?: boolean; // activar / desactivar autoplay
+  autoplayIntervalMs?: number; // intervalo entre slides
 }
 
+// Altura responsiva basada en el ancho de la ventana
 const HEIGHT = (() => {
   if (WINDOW_WIDTH >= 1024) return 400; // lg
-  if (WINDOW_WIDTH >= 768) return 300;  // md
-  return 180;                           // base
+  if (WINDOW_WIDTH >= 768) return 300; // md
+  return 180; // base
 })();
 
 export const CarouselBanner: React.FC<Props> = ({
   portadas,
   loading = false,
-  itemWidth = WINDOW_WIDTH,
+  itemWidth = WINDOW_WIDTH, // usamos el ancho de la ventana como base
   gap = 4,
   onPressPortada,
   autoplay = true,
@@ -61,6 +72,10 @@ export const CarouselBanner: React.FC<Props> = ({
   );
   const items = data.length > 0 ? data : portadas;
 
+  // Cada ítem usa TODO el ancho del carrusel
+  const effectiveItemWidth = itemWidth;
+  const snapInterval = effectiveItemWidth + gap;
+
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     scrollXRef.current = e.nativeEvent.contentOffset.x;
   };
@@ -74,20 +89,31 @@ export const CarouselBanner: React.FC<Props> = ({
   };
 
   const getMaxOffset = () => {
+    // El máximo offset es el ancho total del contenido menos el ancho visible del contenedor
     const maxOffset = contentWidthRef.current - containerWidthRef.current;
     return maxOffset > 0 ? maxOffset : 0;
   };
 
   const handleNext = () => {
     if (!scrollRef.current) return;
-    const delta = itemWidth + gap;
+
+    const slideSize = snapInterval;
     const maxOffset = getMaxOffset();
 
-    if (maxOffset === 0) return;
+    // Si solo hay un item (o el maxOffset es 0), no hacer nada
+    if (maxOffset === 0 || portadas.length <= 1) return;
 
-    let target = scrollXRef.current + delta;
-    if (target > maxOffset) {
-      target = 0;
+    let target = scrollXRef.current + slideSize;
+
+    // Límite del contenido original (primera mitad de 'items')
+    const originalContentEnd = portadas.length * slideSize;
+    const isAtEnd = scrollXRef.current >= originalContentEnd - 1; // tolerancia
+
+    if (isAtEnd) {
+      // Volvemos al inicio sin animación, luego avanzamos al segundo slide
+      scrollRef.current.scrollTo({ x: 0, animated: false });
+      target = slideSize;
+      scrollXRef.current = 0;
     }
 
     scrollRef.current.scrollTo({ x: target, animated: true });
@@ -95,9 +121,7 @@ export const CarouselBanner: React.FC<Props> = ({
   };
 
   const startAutoplay = () => {
-    if (!autoplay) return;
-    if (autoplayTimerRef.current) return;
-    if (portadas.length <= 1) return;
+    if (!autoplay || portadas.length <= 1 || autoplayTimerRef.current) return;
 
     autoplayTimerRef.current = setInterval(() => {
       handleNext();
@@ -155,24 +179,32 @@ export const CarouselBanner: React.FC<Props> = ({
           onTouchStart={stopAutoplay}
           onTouchEnd={startAutoplay}
           decelerationRate="fast"
-          snapToInterval={itemWidth + gap}
+          snapToInterval={snapInterval}
           snapToAlignment="start"
           contentContainerStyle={[
             styles.track,
-            { columnGap: gap, paddingHorizontal: 8 },
+            {
+              columnGap: gap,
+              // Sin padding horizontal para que no aparezcan barras blancas
+              paddingHorizontal: 0,
+            },
           ]}
         >
           {items.map((item, index) => (
             <View
               key={`portada-${item.id_portada}-${index}`}
-              style={{ width: itemWidth, height: HEIGHT }}
+              style={{
+                width: effectiveItemWidth,
+                height: HEIGHT,
+              }}
             >
               <Pressable
                 style={{ flex: 1 }}
                 onPress={() => {
                   stopAutoplay();
-                  onPressPortada?.(item, index);
-                  startAutoplay();
+                  const originalIndex = index % portadas.length;
+                  onPressPortada?.(portadas[originalIndex], originalIndex);
+                  setTimeout(startAutoplay, 500);
                 }}
                 android_ripple={{ color: "rgba(0,0,0,0.08)" }}
               >
@@ -180,7 +212,7 @@ export const CarouselBanner: React.FC<Props> = ({
                   source={{ uri: item.url_imagen }}
                   accessibilityLabel={`Portada ${item.id_portada}`}
                   style={styles.image}
-                  resizeMode="cover"
+                  resizeMode="cover" // cubre todo el contenedor sin deformarse
                 />
               </Pressable>
             </View>
@@ -193,21 +225,21 @@ export const CarouselBanner: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   container: {
-    width: "99%",
+    width: "100%",
     alignSelf: "center",
   },
   carouselWrapper: {
     width: "100%",
-    maxWidth: 1150,
+    maxWidth: 900,
     alignSelf: "center",
     borderRadius: 12,
-    overflow: "hidden",
+    overflow: "hidden", // recorta la imagen dentro del borderRadius
     backgroundColor: "white",
   },
   track: {
     flexDirection: "row",
     alignItems: "stretch",
-    paddingVertical: 4,
+    paddingVertical: 0,
   },
   image: {
     width: "100%",
