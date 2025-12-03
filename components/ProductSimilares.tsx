@@ -27,36 +27,35 @@ interface Props {
   gap?: number;       
   autoplaySpeed?: number; 
   resumeDelayMs?: number; 
+  autoplay?: boolean;      // <<< NUEVO
 }
 
 export const ProductSimilares: React.FC<Props> = ({
-  // *** CAMBIO 1: Reducir el valor por defecto de gap de 8 a 4 ***
   products,
-  itemWidth = 140, // Asumiendo el valor ajustado anteriormente (antes 180)
-  gap = 4,         // *** REDUCIDO: Menos separación entre productos ***
+  itemWidth = 140,
+  gap = 4,
   autoplaySpeed = 0.6,
   resumeDelayMs = 2000,
+  autoplay = true,        // <<< por defecto true
 }) => {
   const scrollRef = useRef<ScrollView>(null);
   const containerWidthRef = useRef(0);
   const [paused, setPaused] = useState(false);
 
-  // Duplicamos para loop infinito
   const data = useMemo(() => [...products, ...products], [products]);
 
-  // Medimos contenido para saber cuándo “reiniciar”
   const contentWidthRef = useRef(0);
   const halfWidthRef = useRef(0);
   const scrollXRef = useRef(0);
 
-  // Control del autoplay con RAF
   const rafIdRef = useRef<number | null>(null);
 
   const startAutoplay = () => {
+    if (!autoplay) return;              // <<< respeta flag
     if (rafIdRef.current != null) return;
 
     const loop = () => {
-      if (!paused && scrollRef.current) {
+      if (autoplay && !paused && scrollRef.current && halfWidthRef.current > 0) {
         const nextX = scrollXRef.current + autoplaySpeed;
 
         if (nextX >= halfWidthRef.current) {
@@ -81,14 +80,20 @@ export const ProductSimilares: React.FC<Props> = ({
   };
 
   useEffect(() => {
-    startAutoplay();
+    if (autoplay) {
+      startAutoplay();
+    } else {
+      stopAutoplay();
+    }
+
     return () => {
       stopAutoplay();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paused, autoplaySpeed, products]);
+  }, [autoplay, paused, autoplaySpeed, data.length]);
 
   const resumeLater = () => {
+    if (!autoplay) return;
     setPaused(true);
     setTimeout(() => setPaused(false), resumeDelayMs);
   };
@@ -96,7 +101,6 @@ export const ProductSimilares: React.FC<Props> = ({
   const handlePrev = () => {
     if (!scrollRef.current) return;
     setPaused(true);
-    // Usamos itemWidth + gap para el salto exacto
     const delta = itemWidth + gap; 
     const target = Math.max(scrollXRef.current - delta, 0);
     scrollRef.current.scrollTo({ x: target, animated: true });
@@ -107,7 +111,6 @@ export const ProductSimilares: React.FC<Props> = ({
   const handleNext = () => {
     if (!scrollRef.current) return;
     setPaused(true);
-    // Usamos itemWidth + gap para el salto exacto
     const delta = itemWidth + gap;
     let target = scrollXRef.current + delta;
 
@@ -132,7 +135,6 @@ export const ProductSimilares: React.FC<Props> = ({
 
   return (
     <View style={styles.root} onLayout={onLayout}>
-      
       {/* Botón Anterior */}
       <Pressable
         onPressIn={handlePrev} 
@@ -157,13 +159,12 @@ export const ProductSimilares: React.FC<Props> = ({
         showsHorizontalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={onScroll}
-        onContentSizeChange={(w) => onContentSizeChange(w)}
+        onContentSizeChange={onContentSizeChange}
         keyboardShouldPersistTaps="always"
-        onScrollBeginDrag={() => setPaused(true)}
+        onScrollBeginDrag={() => autoplay && setPaused(true)}
         onScrollEndDrag={resumeLater}
-        onTouchStart={() => setPaused(true)}
+        onTouchStart={() => autoplay && setPaused(true)}
         onTouchEnd={resumeLater}
-        // Usamos columnGap que recibe el valor de la prop 'gap' (ahora 4 por defecto)
         contentContainerStyle={[styles.track, { columnGap: gap, paddingHorizontal: 8 }]} 
       >
         {data.map((product, index) => (

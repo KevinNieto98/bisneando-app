@@ -127,6 +127,8 @@ export async function fetchCategorias() {
 export async function fetchActivePortadas() {
   try {
     const res = await apiFetch<any[]>("/api/portadas");
+    console.log('res', res);
+    
     return Array.isArray(res) ? res : [];
   } catch {
     return [];

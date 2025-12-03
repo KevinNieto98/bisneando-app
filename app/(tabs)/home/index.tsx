@@ -1,5 +1,5 @@
 import { CategorySkeleton } from "@/components";
-import { CarouselBanner } from "@/components/CarouselBanner";
+import { CarouselBanner, Portada } from "@/components/CarouselBanner";
 import CategorySection from "@/components/CategoySection";
 import { ProductSimilares } from "@/components/ProductSimilares";
 
@@ -9,10 +9,11 @@ import { InternetError } from "@/components/ui/InternetError";
 import { ProductSkeleton } from "@/components/ui/ProductSkeleton";
 import Title from "@/components/ui/Title.native";
 import useAuth from "@/hooks/useAuth";
+import { fetchActivePortadas } from "@/services/api";
 import { useAppStore } from "@/store/useAppStore";
 import { useCartStore } from "@/store/useCartStore";
 import { router } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Image,
   Platform,
@@ -27,7 +28,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 // =========================================================================
-// Mock de la barra de búsqueda (al presionar navega a /explore)
+// Mock de la barra de búsqueda
 // =========================================================================
 const SearchInputMock = () => {
   const handlePress = () => {
@@ -35,8 +36,8 @@ const SearchInputMock = () => {
   };
 
   return (
-    <TouchableOpacity 
-      style={mockStyles.searchContainer} 
+    <TouchableOpacity
+      style={mockStyles.searchContainer}
       onPress={handlePress}
       activeOpacity={0.8}
     >
@@ -48,9 +49,9 @@ const SearchInputMock = () => {
 
 const mockStyles = StyleSheet.create({
   searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 15,
@@ -60,16 +61,15 @@ const mockStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
-    elevation: 4
+    elevation: 4,
   },
   searchText: {
     marginLeft: 8,
-    color: '#71717a',
+    color: "#71717a",
     fontSize: 15,
   },
 });
 // =========================================================================
-
 
 export default function HomeScreen() {
   const {
@@ -83,29 +83,66 @@ export default function HomeScreen() {
 
   const { user } = useAuth();
   const totalItems = useCartStore((s) => s.totalItems());
-
   const insets = useSafeAreaInsets();
-  const [showBanner, setShowBanner] = useState(false);
-  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // estado para errores de red
+  // Estados
+  const [refreshing, setRefreshing] = useState(false);
   const [networkError, setNetworkError] = useState(false);
   const [networkErrorMessage, setNetworkErrorMessage] = useState(
     "No pudimos cargar la información. Revisa tu conexión a internet."
   );
 
-  // estado de refresco (pull-to-refresh)
-  const [refreshing, setRefreshing] = useState(false);
+  // Portadas
+  const [portadas, setPortadas] = useState<Portada[]>([]);
+  const [loadingPortadas, setLoadingPortadas] = useState(true);
 
+  const loadPortadasFromApi = async () => {
+    setLoadingPortadas(true);
+    try {
+      const rawData = await fetchActivePortadas();
+      console.log("Portadas crudas desde API:", rawData);
+
+      // 👇 MAPEAMOS USANDO LOS CAMPOS REALES: id_portada, link, is_active, etc.
+      const mapped: Portada[] = (rawData ?? []).map((p: any) => ({
+        id_portada: p.id_portada,
+        url_imagen: p.url_imagen,
+        link_destino: p.link ?? null,
+        activo: p.is_active,
+        metadatos: {
+          fecha_creacion: p.fecha_creacion,
+          fecha_modificacion: p.fecha_modificacion,
+          usuario_crea: p.usuario_crea,
+          usuario_modificacion: p.usuario_modificacion,
+        },
+      }));
+
+      setPortadas(mapped);
+
+      if (mapped.length > 0) {
+        console.log("Ejemplo portada mapeada:", mapped[0]);
+      }
+    } catch (err) {
+      console.error("Error cargando portadas:", err);
+      setPortadas([]);
+    } finally {
+      setLoadingPortadas(false);
+    }
+  };
+
+  // Cargar todo al inicio
   useEffect(() => {
     const loadInitial = async () => {
       setNetworkError(false);
       try {
-        await Promise.all([loadCategories(), loadProducts()]);
+        await Promise.all([
+          loadCategories(),
+          loadProducts(),
+          loadPortadasFromApi(),
+        ]);
       } catch (error: any) {
         if (error?.isNetworkError) {
           setNetworkError(true);
-          if (error?.message) setNetworkErrorMessage(error.message); 
+          if (error?.message) setNetworkErrorMessage(error.message);
         }
       }
     };
@@ -113,23 +150,16 @@ export default function HomeScreen() {
     loadInitial();
   }, []);
 
-  // Opcional: puedes activar el banner manualmente más adelante si quieres
-  useEffect(() => {
-    if (!showBanner) return;
-    bannerTimerRef.current = setTimeout(() => {
-      setShowBanner(false);
-    }, 5000);
-    return () => {
-      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
-    };
-  }, [showBanner]);
-
-  // Pull-to-refresh sobre ScrollView
+  // Pull To Refresh
   const onRefresh = async () => {
     setRefreshing(true);
     setNetworkError(false);
     try {
-      await Promise.all([loadCategories(), loadProducts()]);
+      await Promise.all([
+        loadCategories(),
+        loadProducts(),
+        loadPortadasFromApi(),
+      ]);
     } catch (error: any) {
       if (error?.isNetworkError) {
         setNetworkError(true);
@@ -140,17 +170,27 @@ export default function HomeScreen() {
     }
   };
 
-  // si no hay datos y ya no está cargando, asumimos problema de red
   const noDataLoaded =
     !loadingCategories &&
     !loadingProducts &&
+    !loadingPortadas &&
     categories.length === 0 &&
-    products.length === 0;
+    products.length === 0 &&
+    portadas.length === 0;
 
   const showInternetError = networkError || noDataLoaded;
 
-  // solo productos con stock > 0
   const productsInStock = products.filter((p: any) => (p.qty ?? 0) > 0);
+
+  // Navegación cuando se presiona una portada
+  const handlePressPortada = (portada: Portada) => {
+    console.log("Portada clickeada:", portada.id_portada);
+    console.log("Navegando hacia:", portada.link_destino);
+
+    if (!portada.link_destino) return;
+
+    router.push(portada.link_destino as any);
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -164,7 +204,6 @@ export default function HomeScreen() {
           resizeMode="contain"
         />
 
-        {/* Agrupar Notificaciones y Carrito */}
         <View style={styles.rightHeaderIcons}>
           {user && (
             <TouchableOpacity
@@ -174,15 +213,21 @@ export default function HomeScreen() {
               <Icono name="Bell" size={22} color="#27272a" />
             </TouchableOpacity>
           )}
-
           <CartButton count={totalItems} />
         </View>
       </View>
-      
-      {/* MOCK DE SEARCH INPUT */}
+
+      {/* Search */}
       <SearchInputMock />
 
-      {/* Contenedor con fondo blanco y bordes redondeados */}
+      {/* Banner / Portadas */}
+      <CarouselBanner
+        portadas={portadas}
+        loading={loadingPortadas}
+        onPressPortada={handlePressPortada}
+      />
+
+      {/* Contenido */}
       <View
         style={[
           styles.content,
@@ -191,27 +236,13 @@ export default function HomeScreen() {
       >
         <ScrollView
           contentContainerStyle={{ paddingBottom: 24 }}
-          keyboardShouldPersistTaps="always" 
+          keyboardShouldPersistTaps="always"
           keyboardDismissMode="on-drag"
           scrollEnabled={true}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {/* Banner inline */}
-          {showBanner && (
-            <View
-              style={[
-                styles.inlineBanner,
-                { marginTop: insets.top > 0 ? 4 : 0 },
-              ]}
-            >
-              <Text style={styles.inlineBannerText}>
-                Bienvenido a Bisneando
-              </Text>
-            </View>
-          )}
-
           {showInternetError ? (
             <InternetError
               message={networkErrorMessage}
@@ -219,9 +250,6 @@ export default function HomeScreen() {
             />
           ) : (
             <View>
-              {/* Banner / portadas */}
-              <CarouselBanner />
-
               {/* Categorías */}
               <Title
                 icon={<Icono name="Tags" size={20} color="#52525b" />}
@@ -230,14 +258,7 @@ export default function HomeScreen() {
               {loadingCategories ? (
                 <CategorySkeleton />
               ) : (
-                <TouchableOpacity 
-                    activeOpacity={1} 
-                    onPress={() => {}} 
-                    style={{ flex: 1 }} 
-                    disabled={false}
-                >
-                    <CategorySection categories={categories} />
-                </TouchableOpacity>
+                <CategorySection categories={categories} />
               )}
 
               {/* Productos Destacados */}
@@ -246,11 +267,11 @@ export default function HomeScreen() {
                 title="Productos Destacados"
                 style={{ marginTop: 16 }}
               />
+
               {loadingProducts ? (
-                // *** USO DEL SKELETON EN VEZ DEL SPINNER ***
                 <ProductSkeleton count={3} />
               ) : (
-                <ProductSimilares products={productsInStock} />
+                <ProductSimilares products={productsInStock}  />
               )}
             </View>
           )}
@@ -259,6 +280,8 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
+
+// ============================================================
 
 const styles = StyleSheet.create({
   container: {
@@ -285,8 +308,8 @@ const styles = StyleSheet.create({
     }),
   },
   rightHeaderIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   notificationButton: {
@@ -300,17 +323,5 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 16,
-  },
-  inlineBanner: {
-    backgroundColor: "#16a34a",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginBottom: 12,
-  },
-  inlineBannerText: {
-    color: "white",
-    fontWeight: "800",
-    textAlign: "center",
   },
 });
