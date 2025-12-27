@@ -1,9 +1,7 @@
 import { validateCart } from "@/services/api";
-import type { CartItem as CartItemType } from "@/store/useCartStore";
+
 import { useCartStore } from "@/store/useCartStore";
 import { Ionicons } from "@expo/vector-icons";
-// ❌ ya no usamos useNavigation
-// import { useNavigation } from "@react-navigation/native";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -13,6 +11,16 @@ import {
   Text,
   View,
 } from "react-native";
+
+export type CartItemValidation = {
+  id_bodega: any;
+  id: number;
+  title: string;
+  price: number;
+  images: string[];
+  quantity: number;
+  inStock?: number;
+};
 
 type ValidationIssue = {
   id: number;
@@ -28,7 +36,7 @@ type Props = {
   taxes: number;
   total: number;
   toHNL: (n: number) => string;
-  items: CartItemType[];
+  items: CartItemValidation[];
   onValidationFail?: (payload: {
     message: string;
     issues: ValidationIssue[];
@@ -47,7 +55,6 @@ export const CartSummary: React.FC<Props> = ({
   onValidationFail,
   onKeepShopping,
 }) => {
-  // const navigation = useNavigation(); // ❌ eliminado
   const [loading, setLoading] = useState(false);
 
   // Nueva acción del store para aplicar precios del servidor
@@ -63,6 +70,7 @@ export const CartSummary: React.FC<Props> = ({
           price: i.price,
           quantity: i.quantity,
           title: i.title,
+          id_bodega: i.id_bodega,
         }))
       );
 
@@ -96,8 +104,7 @@ export const CartSummary: React.FC<Props> = ({
               status: i.status,
               availableQty:
                 typeof i.availableQty === "number" ? i.availableQty : undefined,
-              dbPrice:
-                typeof i.dbPrice === "number" ? i.dbPrice : undefined,
+              dbPrice: typeof i.dbPrice === "number" ? i.dbPrice : undefined,
               nombre_producto: i.nombre_producto,
             })) ?? [];
 
@@ -107,32 +114,70 @@ export const CartSummary: React.FC<Props> = ({
 
       // === OK: precios del servidor ===
       const serverItems = Array.isArray(res.items) ? res.items : [];
+      console.log("serverItems: ", serverItems);
 
-      // 1) Actualiza precios en el store (UI/local) con dbPrice
+      // 1) Actualiza precios en el store (UI/local) con dbPrice (+ id_bodega si tu store ya lo soporta)
       applyServerPrices(serverItems);
 
       // 2) Construye el cart para checkout con precios definitivos
-      const serverItemsMap = new Map<number, any>(
-        serverItems.map((s: any) => [Number(s.id), s])
-      );
+      // ✅ FIX: soporte de key exacta `${id_bodega}:${id}` + fallback por id
+      const serverItemsMapExact = new Map<string, any>();
+      const serverItemsMapById = new Map<number, any>();
+
+      for (const s of serverItems) {
+        if (s == null) continue;
+
+        const sid = Number(s.id);
+        if (!Number.isFinite(sid)) continue;
+
+        // if (typeof s.id_bodega === "number") {
+        //   serverItemsMapExact.set(`${s.id_bodega}:${sid}`, s);
+        // }
+        // fallback por id
+        serverItemsMapById.set(sid, s);
+      }
 
       const checkoutCart = items.map((i) => {
-        const server = serverItemsMap.get(i.id);
+        const keyExact =
+          i.id_bodega != null ? `${Number(i.id_bodega)}:${Number(i.id)}` : null;
+
+        const server =
+          (keyExact ? serverItemsMapExact.get(keyExact) : undefined) ??
+          serverItemsMapById.get(Number(i.id));
+
         const priceFromServer =
           server && typeof server.dbPrice === "number"
             ? server.dbPrice
             : i.price;
 
+        // ✅ FIX: id_bodega desde servidor si viene; fallback a i.id_bodega
+        const bodegaFromServer =
+          server && typeof server.id_bodega === "number"
+            ? server.id_bodega
+            : i.id_bodega;
+
+        const qtyFromServer =
+          server && typeof server.requestedQty === "number"
+            ? server.requestedQty
+            : i.quantity;
+
         return {
           id: i.id,
           title: i.title,
-          quantity: i.quantity,
+          quantity: qtyFromServer,
+          id_bodega: bodegaFromServer,
           price: priceFromServer, // definitivo para cobro
           dbPrice:
             typeof server?.dbPrice === "number" ? server.dbPrice : undefined,
           image: Array.isArray(i.images) ? i.images[0] : undefined,
         };
       });
+
+      // ✅ Debug recomendado (puedes quitarlo después)
+      console.log(
+        "[CARTSUMMARY][CHECKOUT_CART_BODEGAS]",
+        checkoutCart.map((x) => ({ id: x.id, id_bodega: x.id_bodega }))
+      );
 
       const subtotalServer = checkoutCart.reduce(
         (acc, it) => acc + Number(it.price) * Number(it.quantity),
@@ -225,7 +270,6 @@ export const CartSummary: React.FC<Props> = ({
           isKeepDisabled && styles.keepBtnDisabled,
           pressed && !isKeepDisabled && { opacity: 0.9 },
         ]}
-        // 👇 usamos el callback que viene de props
         onPress={onKeepShopping}
         disabled={isKeepDisabled}
         android_ripple={

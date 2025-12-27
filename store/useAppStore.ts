@@ -16,6 +16,7 @@ export interface Product {
   price: number;
   images: string[];
   brand?: string;
+  id_bodega?:number;
   id_categoria: number;  // necesario para filtrar
   qty: number;           // 👈 NUEVO: stock del producto
 }

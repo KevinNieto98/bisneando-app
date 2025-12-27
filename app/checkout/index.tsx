@@ -18,7 +18,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  View,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -56,11 +56,20 @@ const toNumber = (v: any) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// ✅ Convierte a number o null (no regresa 0 si viene null)
+const coerceNullableNumber = (v: any): number | null => {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
 // 🔒 Regla: tope para pagos en efectivo
 const MAX_CASH_TOTAL = 1500;
 
 export default function CheckoutScreen() {
   const { user, loading } = useAuth();
+  const [alertKey, setAlertKey] = useState(0);
   const { products, loadProducts } = useAppStore();
   const clearCart = useCartStore((s) => s.clear);
 
@@ -97,10 +106,17 @@ export default function CheckoutScreen() {
   // 📝 Instrucciones de entrega (opcional)
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
 
-  const openReason = (msg: string) => {
-    setModalMessage(msg);
-    setIsModalVisible(true);
-  };
+const openReason = (msg: string) => {
+  // apaga confirm por si estaba activo
+  setShowBackConfirm(false);
+
+  // fuerza reset + remount
+  setIsModalVisible(false);
+  setModalMessage(msg);
+  setAlertKey((k) => k + 1);
+
+  requestAnimationFrame(() => setIsModalVisible(true));
+};
   const handleModalClose = () => setIsModalVisible(false);
 
   useFocusEffect(
@@ -137,11 +153,14 @@ export default function CheckoutScreen() {
   useEffect(() => {
     if (cartParam) return;
     if (products.length > 0) {
+      console.log("products aqui, ", products);
+
       const enriched = products.map((p) => ({
         id: p.id,
         title: p.title,
         price: Number(p.price),
         quantity: 1,
+        id_bodega: p.id_bodega,
         image: Array.isArray(p.images) ? p.images[0] : undefined,
         inStock: Math.floor(Math.random() * 10) + 1,
         subtotal: Number(p.price) * 1,
@@ -155,19 +174,65 @@ export default function CheckoutScreen() {
     if (!cartParam) return;
     try {
       const parsed = JSON.parse(decodeURIComponent(cartParam));
+
+      console.log(
+        "[CHECKOUT][CART_PARAM_RAW_FIRST_ITEM]",
+        JSON.stringify(Array.isArray(parsed) ? parsed[0] : parsed, null, 2)
+      );
+
       const normalized = (Array.isArray(parsed) ? parsed : []).map((it) => {
         const priceNum = toNumber(it.price);
         const qtyNum = toNumber(it.quantity);
+
+        // ✅ Prioridad explícita de posibles llaves (incluye variaciones comunes)
+        const rawBodega =
+          it.id_bodega ??
+          it.idBodega ??
+          it.bodega_id ??
+          it.id_bodega_producto ??
+          it.idBodegaProducto ??
+          it.id_bodega_stock ??
+          it.bodega ??
+          // defensivo: si alguien envía nested
+          (it.stock ? it.stock.id_bodega : undefined) ??
+          (it.producto ? it.producto.id_bodega : undefined) ??
+          null;
+
+        const idBodegaNum = coerceNullableNumber(rawBodega);
+
+        if (idBodegaNum == null) {
+          console.log(
+            "[CHECKOUT][BODEGA_MISSING_ITEM]",
+            JSON.stringify(
+              {
+                id: it.id,
+                title: it.title,
+                keys: Object.keys(it ?? {}),
+                rawBodegaDetected: rawBodega,
+                rawItem: it,
+              },
+              null,
+              2
+            )
+          );
+        }
+
         return {
           id: toNumber(it.id),
           title: String(it.title ?? ""),
           price: priceNum,
           quantity: qtyNum,
           image: it.image,
+
+          // ✅ siempre number|null
+          id_bodega: idBodegaNum,
+
           dbPrice: typeof it.dbPrice === "number" ? it.dbPrice : undefined,
           subtotal: priceNum * qtyNum,
         };
       });
+
+      console.log("[CHECKOUT][ITEMS_NORMALIZED]", JSON.stringify(normalized, null, 2));
       setItems(normalized);
     } catch (e) {
       console.warn("No se pudo parsear cart param:", e);
@@ -199,10 +264,7 @@ export default function CheckoutScreen() {
 
       const rows: Direccion[] = await fetchDireccionesByUid(user.id, { token });
 
-      console.log(
-        "[CHECKOUT][FETCH_ADDR_ROWS]",
-        JSON.stringify(rows, null, 2)
-      );
+      console.log("[CHECKOUT][FETCH_ADDR_ROWS]", JSON.stringify(rows, null, 2));
 
       const mapped: Addr[] = rows.map((r) => ({
         id: r.id_direccion,
@@ -215,10 +277,7 @@ export default function CheckoutScreen() {
         id_colonia: (r as any).id_colonia ?? null, // 👈 importante
       }));
 
-      console.log(
-        "[CHECKOUT][FETCH_ADDR_MAPPED]",
-        JSON.stringify(mapped, null, 2)
-      );
+      console.log("[CHECKOUT][FETCH_ADDR_MAPPED]", JSON.stringify(mapped, null, 2));
 
       setAddresses(mapped);
 
@@ -306,6 +365,8 @@ export default function CheckoutScreen() {
           title: it.title,
           price: Number(it.price),
           quantity: Number(it.quantity),
+          id_bodega: it.id_bodega,
+          id_bodega_type: typeof it.id_bodega,
           subtotal: Number(it.subtotal ?? (Number(it.price) * Number(it.quantity))),
           image: it.image ?? null,
           dbPrice: typeof it.dbPrice === "number" ? it.dbPrice : null,
@@ -320,7 +381,7 @@ export default function CheckoutScreen() {
           isPrincipal: !!addressObj.isPrincipal,
           latitud: addressObj.latitud ?? null,
           longitud: addressObj.longitud ?? null,
-          id_colonia: addressObj.id_colonia ?? null, // 👈 log de colonia
+          id_colonia: addressObj.id_colonia ?? null,
         }
         : null,
       payment: {
@@ -367,26 +428,21 @@ export default function CheckoutScreen() {
     const instructions = deliveryInstructions.trim();
 
     const payload = {
-      id_status: 1, // creada (ajusta si usas otro estado inicial)
-      uid: user?.id ?? undefined,                // tbl_orders_head.uid es NOT NULL
+      id_status: 1,
+      uid: user?.id ?? undefined,
       usuario_actualiza: (user as any)?.email ?? user?.id ?? null,
-      tipo_dispositivo: Platform.OS,             // "ios" | "android"
+      tipo_dispositivo: Platform.OS,
 
-      // Usamos observacion para guardar las instrucciones por ahora
       observacion: instructions || null,
       actividad_observacion: actividadObs || null,
-      // Campo extra por si luego lo quieres mapear directo en la API/DB
       instrucciones_entrega: instructions || null,
 
-      // 🔹 id_metodo se manda directo al body
       id_metodo: selectedMethodId ?? null,
 
-      // Totales del resumen
       delivery: Number(summary.shipping ?? 0),
       isv: Number(summary.taxes ?? 0),
       ajuste: 0,
 
-      // Info de dirección (incluyendo coordenadas + id_colonia)
       direccion: addressObj
         ? {
           id_direccion: addressObj.id,
@@ -394,15 +450,17 @@ export default function CheckoutScreen() {
           referencia: addressObj.referencia,
           latitud: addressObj.latitud ?? null,
           longitud: addressObj.longitud ?? null,
-          id_colonia: addressObj.id_colonia ?? null, // 👈 AQUÍ se manda id_colonia
+          id_colonia: addressObj.id_colonia ?? null,
         }
         : null,
 
-      // Items del carrito
       items: items.map((it) => ({
         id_producto: Number(it.id),
         qty: Number(it.quantity),
         precio: Number(it.price),
+
+        // ✅ IMPORTANT: no conviertas null a Number()
+        id_bodega: it.id_bodega == null ? null : Number(it.id_bodega),
       })),
     } as const;
 
@@ -432,6 +490,18 @@ export default function CheckoutScreen() {
       return;
     }
 
+    // ✅ BLOQUEO si falta id_bodega y backend lo necesita para validar precio
+    const missingBodega = items.find((it) => it.id_bodega == null);
+    if (missingBodega) {
+      console.log("[CHECKOUT][BLOCKED_MISSING_BODEGA]", JSON.stringify(buildLogPayload("blocked"), null, 2));
+      openReason(
+        `Uno o más productos no tienen bodega asignada (id_bodega). ` +
+        `Regresa al carrito y vuelve a seleccionar los productos. ` +
+        `Producto: ${missingBodega.title ?? missingBodega.id}`
+      );
+      return;
+    }
+
     const isCardLocal = selectedMethodId === 2;
     const isCashLocal = !isCardLocal && !!paymentMethodCode;
     const cardFormValidLocal =
@@ -458,14 +528,14 @@ export default function CheckoutScreen() {
 
     console.log("[CHECKOUT][ORDER_READY]", JSON.stringify(buildLogPayload("ready"), null, 2));
 
-    if (isPlacing) return; // evita doble tap
+    if (isPlacing) return;
     setIsPlacing(true);
     try {
       const payload = buildOrderPayload();
       const resp = await createOrderRequest(payload);
 
       if ("data" in resp && resp.data?.id_order) {
-        clearCart(); // 🧹 vaciar carrito
+        clearCart();
         router.push({
           pathname: "/success",
           params: {
@@ -551,26 +621,32 @@ export default function CheckoutScreen() {
         loading={isPlacing}
       />
 
-      <ConfirmModal
-        visible={showBackConfirm}
-        title="¿Salir del checkout?"
-        message={"Si regresas, perderás el progreso de esta orden.\n\n¿Deseas salir?"}
-        icon="alert-circle"
-        confirmText="Salir"
-        cancelText="Continuar aquí"
-        onConfirm={() => {
-          setShowBackConfirm(false);
-          router.replace("/(tabs)/cart");
-        }}
-        onCancel={() => setShowBackConfirm(false)}
-      />
+{showBackConfirm ? (
+  <ConfirmModal
+    visible={showBackConfirm}
+    title="¿Salir del checkout?"
+    message={"Si regresas, perderás el progreso de esta orden.\n\n¿Deseas salir?"}
+    icon="alert-circle"
+    confirmText="Salir"
+    cancelText="Continuar aquí"
+    onConfirm={() => {
+      setShowBackConfirm(false);
+      router.replace("/(tabs)/cart");
+    }}
+    onCancel={() => setShowBackConfirm(false)}
+  />
+) : null}
 
-      <AlertModal
-        visible={isModalVisible}
-        title="¡Ups!"
-        message={modalMessage}
-        onClose={handleModalClose}
-      />
+{isModalVisible ? (
+  <AlertModal
+    key={alertKey}            // ✅ fuerza remount
+    visible={isModalVisible}
+    title="¡Ups!"
+    message={modalMessage}
+    onClose={() => setIsModalVisible(false)}
+  />
+) : null}
+
     </SafeAreaView>
   );
 }

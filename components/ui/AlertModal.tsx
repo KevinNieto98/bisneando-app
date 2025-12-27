@@ -1,7 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import Modal from "react-native-modal";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity
+} from "react-native";
 
 interface AlertModalProps {
   visible: boolean;
@@ -20,53 +26,71 @@ const AlertModal: React.FC<AlertModalProps> = ({
 }) => {
   return (
     <Modal
-      isVisible={visible}
-      onBackdropPress={onClose}
-      onBackButtonPress={onClose}
-      backdropOpacity={0.4}
-      animationIn="zoomIn"
-      animationOut="zoomOut"
+      visible={visible}
+      transparent
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      statusBarTranslucent={Platform.OS === "android"}
+      onRequestClose={onClose}
     >
-      <View style={styles.modalContainer}>
-        <Ionicons name={icon} size={60} color="#eab308" />
-        <Text style={styles.modalTitle}>{title}</Text>
-        <Text style={styles.modalMessage}>{message}</Text>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={styles.card} onPress={() => {}}>
+          <Ionicons name={icon} size={56} color="#eab308" />
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.message}>{message}</Text>
 
-        <TouchableOpacity onPress={onClose} style={styles.modalButton}>
-          <Text style={styles.modalButtonText}>Entendido</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity onPress={onClose} style={styles.btn} activeOpacity={0.9}>
+            <Text style={styles.btnText}>Entendido</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  modalContainer: {
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 18,
+  },
+  card: {
+    width: "100%",
+    maxWidth: 420,
     backgroundColor: "white",
     borderRadius: 16,
     padding: 24,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
-  modalTitle: {
+  title: {
     fontSize: 20,
     fontWeight: "700",
     color: "#1f2937",
     marginTop: 12,
+    textAlign: "center",
   },
-  modalMessage: {
+  message: {
     textAlign: "center",
     color: "#4b5563",
     fontSize: 15,
     marginTop: 8,
     marginBottom: 18,
+    lineHeight: 20,
   },
-  modalButton: {
+  btn: {
     backgroundColor: "#eab308",
     paddingVertical: 10,
     paddingHorizontal: 24,
     borderRadius: 10,
   },
-  modalButtonText: {
+  btnText: {
     color: "white",
     fontWeight: "700",
     fontSize: 16,

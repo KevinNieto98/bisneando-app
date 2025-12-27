@@ -627,6 +627,7 @@ export type CartValidateItemInput = {
   id: number;
   price: number;
   quantity: number;
+  id_bodega:number;
   title?: string;
 };
 
@@ -636,6 +637,7 @@ export type CartValidateOk = {
   requestedQty: number;
   requestedPrice: number;
   nombre_producto: string;
+  id_bodega:number;
   dbPrice: number;
   availableQty: number;
   message: string;
@@ -647,6 +649,7 @@ export type CartValidatePriceMismatch = {
   requestedQty: number;
   requestedPrice: number;
   nombre_producto: string;
+    id_bodega:number;
   dbPrice: number;
   availableQty: number;
   message: string;
@@ -658,6 +661,7 @@ export type CartValidateInsufficient = {
   requestedQty: number;
   requestedPrice: number;
   nombre_producto: string;
+  id_bodega:number;
   dbPrice: number;
   availableQty: number;
   suggestedQty: number;
@@ -701,10 +705,11 @@ export async function validateCart(
 ): Promise<CartValidateResponse> {
   try {
     const payload = {
-      items: items.map(({ id, price, quantity, title }) => ({
+      items: items.map(({ id, price, quantity, title, id_bodega}) => ({
         id,
         price,
         quantity,
+        id_bodega,
         ...(title ? { title } : {}),
       })),
     };
